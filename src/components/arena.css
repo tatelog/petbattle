@@ -1,0 +1,341 @@
+.arena3d {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  min-height: 430px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid rgb(130 175 225 / 24%);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 50% 35%, rgb(31 64 102 / 54%), transparent 48%),
+    #050711;
+  box-shadow:
+    0 32px 90px rgb(0 0 0 / 42%),
+    inset 0 0 80px rgb(79 160 255 / 8%);
+}
+
+.arena3d__canvas {
+  position: absolute !important;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  touch-action: none;
+}
+
+.arena3d__vignette,
+.arena3d__scanlines {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+}
+
+.arena3d__vignette {
+  background:
+    linear-gradient(180deg, rgb(3 5 15 / 55%) 0%, transparent 24%, transparent 70%, rgb(3 5 12 / 68%) 100%),
+    radial-gradient(ellipse at center, transparent 45%, rgb(0 0 0 / 58%) 110%);
+}
+
+.arena3d__scanlines {
+  opacity: 0.12;
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgb(104 220 255 / 10%) 4px
+  );
+  mix-blend-mode: screen;
+}
+
+.arena3d__skip {
+  position: absolute;
+  z-index: 5;
+  right: clamp(14px, 2.5vw, 28px);
+  bottom: clamp(14px, 2.5vw, 26px);
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgb(172 222 255 / 35%);
+  border-radius: 999px;
+  color: rgb(230 248 255 / 88%);
+  background: rgb(5 13 28 / 68%);
+  box-shadow: inset 0 0 24px rgb(94 203 255 / 8%);
+  font: 600 12px/1 system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+  transition:
+    border-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease,
+    background 180ms ease;
+}
+
+.arena3d__skip:hover {
+  color: #fff;
+  border-color: rgb(172 222 255 / 72%);
+  background: rgb(13 31 55 / 82%);
+  transform: translateY(-2px);
+}
+
+.arena3d__skip:focus-visible {
+  outline: 2px solid #7adfff;
+  outline-offset: 3px;
+}
+
+.arena3d__skip span {
+  color: #73dcff;
+  font-size: 17px;
+}
+
+.arena3d__intro-copy {
+  position: absolute;
+  z-index: 4;
+  top: clamp(16px, 4vw, 44px);
+  left: 50%;
+  display: grid;
+  gap: 7px;
+  width: min(90%, 560px);
+  color: #dff8ff;
+  text-align: center;
+  text-shadow: 0 0 18px rgb(69 205 255 / 74%);
+  transform: translateX(-50%);
+  animation: arena-intro-copy 1.8s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+.arena3d__intro-copy span {
+  color: rgb(152 220 244 / 82%);
+  font: 650 clamp(9px, 1.1vw, 12px)/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: 0.28em;
+}
+
+.arena3d__intro-copy strong {
+  font: 750 clamp(16px, 2.6vw, 30px)/1 system-ui, sans-serif;
+  letter-spacing: 0.08em;
+}
+
+.arena3d__battle-start {
+  position: absolute;
+  z-index: 5;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  gap: 8px;
+  width: min(92%, 640px);
+  color: #fff;
+  text-align: center;
+  text-shadow:
+    0 0 12px rgb(255 255 255 / 84%),
+    0 0 38px rgb(91 224 255 / 88%);
+  transform: translate(-50%, -50%);
+  animation: arena-battle-start 1.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+  pointer-events: none;
+}
+
+.arena3d__battle-start::before,
+.arena3d__battle-start::after {
+  position: absolute;
+  top: 50%;
+  width: 28%;
+  height: 1px;
+  content: '';
+  background: linear-gradient(90deg, transparent, #6fe8ff);
+  box-shadow: 0 0 12px #6fe8ff;
+}
+
+.arena3d__battle-start::before {
+  left: 0;
+}
+
+.arena3d__battle-start::after {
+  right: 0;
+  transform: scaleX(-1);
+}
+
+.arena3d__battle-start span {
+  color: #87eaff;
+  font: 700 clamp(9px, 1.3vw, 12px)/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: 0.34em;
+}
+
+.arena3d__battle-start strong {
+  font: 900 clamp(32px, 7vw, 78px)/0.95 system-ui, sans-serif;
+  letter-spacing: 0.08em;
+}
+
+.arena3d__event-badge {
+  position: absolute;
+  z-index: 4;
+  top: clamp(18px, 4vw, 42px);
+  left: 50%;
+  min-width: min(80%, 330px);
+  padding: 10px 22px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  color: #ffb35c;
+  background: linear-gradient(90deg, transparent, rgb(7 12 26 / 76%) 24%, rgb(7 12 26 / 76%) 76%, transparent);
+  box-shadow:
+    0 0 30px color-mix(in srgb, currentColor 25%, transparent),
+    inset 0 0 24px color-mix(in srgb, currentColor 11%, transparent);
+  font: 800 clamp(12px, 2vw, 20px)/1 system-ui, sans-serif;
+  letter-spacing: 0.14em;
+  text-align: center;
+  text-shadow: 0 0 12px currentColor;
+  transform: translateX(-50%);
+  animation: arena-event-badge 1.15s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  pointer-events: none;
+}
+
+.arena3d__event-badge--magic {
+  color: #a77bff;
+}
+
+.arena3d__event-badge--defense {
+  color: #55ddff;
+}
+
+.arena3d__event-badge--counter {
+  color: #ffe06a;
+}
+
+.arena3d__event-badge--ko {
+  color: #ff496f;
+}
+
+.arena3d__pet-label {
+  --arena-accent: #5ce7ff;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 12px;
+  width: 158px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--arena-accent) 58%, transparent);
+  border-radius: 8px;
+  color: #ecfbff;
+  background: rgb(5 13 27 / 82%);
+  box-shadow:
+    0 0 22px color-mix(in srgb, var(--arena-accent) 25%, transparent),
+    inset 0 0 18px color-mix(in srgb, var(--arena-accent) 8%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-align: left;
+  backdrop-filter: blur(10px);
+  user-select: none;
+  pointer-events: none;
+}
+
+.arena3d__pet-label strong {
+  overflow: hidden;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arena3d__pet-label small {
+  grid-column: 2;
+  grid-row: 1;
+  color: rgb(225 245 255 / 70%);
+  font-size: 9px;
+}
+
+.arena3d__hp-track {
+  grid-column: 1 / -1;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 12%);
+}
+
+.arena3d__hp-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--arena-accent);
+  box-shadow: 0 0 8px var(--arena-accent);
+  transition: width 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes arena-intro-copy {
+  from {
+    opacity: 0.6;
+    transform: translateX(-50%) translateY(0);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(3px);
+  }
+}
+
+@keyframes arena-event-badge {
+  0% {
+    opacity: 0;
+    filter: blur(7px);
+    transform: translateX(-50%) scaleX(0.45);
+  }
+  18% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateX(-50%) scaleX(1.08);
+  }
+  28%,
+  80% {
+    opacity: 1;
+    transform: translateX(-50%) scaleX(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-7px);
+  }
+}
+
+@keyframes arena-battle-start {
+  0% {
+    opacity: 0;
+    filter: blur(16px);
+    transform: translate(-50%, -50%) scale(1.65);
+  }
+  18% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+  28%,
+  72% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+}
+
+@media (max-width: 700px) {
+  .arena3d {
+    min-height: 390px;
+    aspect-ratio: 4 / 3;
+    border-radius: 18px;
+  }
+
+  .arena3d__pet-label {
+    width: 126px;
+    padding: 7px 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arena3d__intro-copy,
+  .arena3d__battle-start,
+  .arena3d__event-badge {
+    animation: none;
+  }
+
+  .arena3d__skip,
+  .arena3d__hp-track span {
+    transition: none;
+  }
+}
