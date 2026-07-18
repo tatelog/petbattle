@@ -554,31 +554,7 @@ function App() {
             </div>
             <div className="summon-grid">
               <PetCard pet={leftPet} role="YOUR ARTIFACT" onFile={chooseFile} />
-              <div className="versus">VS</div>
-              <PetCard
-                pet={battleMode === 'online'
-                  ? {
-                      ...rightPet,
-                      name: onlineOpponentId ?? '対戦相手を待機',
-                      description: onlineOpponentId
-                        ? '通信コロシアムへ接続中のチャレンジャー'
-                        : '同じルームIDを共有すると、ここへ対戦相手が現れます',
-                    }
-                  : rightPet}
-                role={battleMode === 'online' ? 'ONLINE CHALLENGER' : 'ARENA RIVAL'}
-                opponent
-                concealed
-              />
-            </div>
-            <div className="analysis-strip" aria-label="PET Core能力値">
-              <Stat label="物理" value={leftPet.stats.physical} className="physical" />
-              <Stat label="魔法" value={leftPet.stats.magic} className="magic" />
-              <Stat label="防御" value={leftPet.stats.defense} className="defense" />
-              <Stat label="有効エッセンス" value={`${leftPet.stats.essence}/16`} className="essence" />
-            </div>
-            <div className="essence-list">
-              {leftPet.traits.map((trait) => <span className="essence-tag" key={trait}>{trait}</span>)}
-              {leftPet.lockedTraits.map((trait) => <span className="essence-tag locked" key={trait}>🔒 {trait} · Lv.2</span>)}
+              <PetCoreVisualizer pet={leftPet} />
             </div>
             <button className="secondary-button" type="button" onClick={analyzeSelected} disabled={isAnalyzing} style={{ marginTop: 18 }}>
               {isAnalyzing ? '意味を解析中…' : '意味を解析'}
@@ -732,49 +708,101 @@ function App() {
 function PetCard({
   pet,
   role,
-  opponent = false,
-  concealed = false,
   onFile,
 }: {
   pet: PetView
   role: string
-  opponent?: boolean
-  concealed?: boolean
   onFile?: (file: File | undefined) => void
 }) {
-  const displayName = concealed ? 'UNKNOWN PET' : pet.name
-  const displayDescription = concealed
-    ? '姿・属性・能力はBATTLE STARTで初めて公開されます。'
-    : pet.description
-
   return (
-    <article className={`pet-card ${opponent ? 'opponent' : ''} ${concealed ? 'concealed' : ''}`}>
+    <article className="pet-card">
       <div className="pet-summon-stage" aria-hidden="true">
         <div className="summon-beam" />
-        {concealed ? (
-          <div className="pet-mystery"><span>?</span></div>
-        ) : (
-          <img
-            key={pet.imageUrl}
-            className="pet-visual"
-            src={pet.imageUrl}
-            alt=""
-          />
-        )}
-        <div className="summon-sparks" />
         <div className="summon-circle" />
+        <img
+          key={pet.imageUrl}
+          className="pet-visual"
+          src={pet.imageUrl}
+          alt=""
+        />
+        <div className="summon-sparks" />
+        <div className="summon-front-arc" />
       </div>
       <div className="pet-card-content">
-        <div className="pet-role">{role}</div><h3>{displayName}</h3><p>{displayDescription}</p>
-        {concealed && <div className="mystery-seal">SEALED UNTIL BATTLE</div>}
+        <div className="pet-role">{role}</div><h3>{pet.name}</h3><p>{pet.description}</p>
         {onFile && <label className="upload-button">画像を選ぶ<input className="file-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onFile(event.target.files?.[0])} /></label>}
       </div>
     </article>
   )
 }
 
-function Stat({ label, value, className }: { label: string; value: number | string; className: string }) {
-  return <div className={`analysis-stat ${className}`}><span>{label}</span><strong>{value}</strong></div>
+function PetCoreVisualizer({ pet }: { pet: PetView }) {
+  const center = { x: 120, y: 116 }
+  const axes = {
+    physical: { x: 120, y: 22 },
+    magic: { x: 214, y: 184 },
+    defense: { x: 26, y: 184 },
+  }
+  const point = (axis: { x: number; y: number }, value: number) => {
+    const ratio = Math.max(0.08, Math.min(1, value / 120))
+    return `${(center.x + (axis.x - center.x) * ratio).toFixed(1)},${(center.y + (axis.y - center.y) * ratio).toFixed(1)}`
+  }
+  const radarPoints = [
+    point(axes.physical, pet.stats.physical),
+    point(axes.magic, pet.stats.magic),
+    point(axes.defense, pet.stats.defense),
+  ].join(' ')
+
+  return (
+    <article className="core-visualizer" aria-label="自分のPET Core能力値">
+      <div className="core-visualizer-heading">
+        <div><span>PET CORE SCAN</span><h3>パラメータ解析</h3></div>
+        <div className="core-level-indicator"><i /> LEVEL 1</div>
+      </div>
+      <div className="core-visualizer-grid">
+        <div className="core-radar-wrap">
+          <svg className="core-radar" viewBox="0 0 240 220" role="img" aria-label={`物理${pet.stats.physical}、魔法${pet.stats.magic}、防御${pet.stats.defense}`}>
+            <defs>
+              <linearGradient id="core-radar-fill" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stopColor="#ff957d" />
+                <stop offset="0.5" stopColor="#a9a2ff" />
+                <stop offset="1" stopColor="#7ce9d3" />
+              </linearGradient>
+            </defs>
+            <polygon className="core-radar-grid" points="120,22 214,184 26,184" />
+            <polygon className="core-radar-grid inner" points="120,53 183,161 57,161" />
+            <polygon className="core-radar-grid inner" points="120,84 151,139 89,139" />
+            <line className="core-radar-axis" x1="120" y1="116" x2="120" y2="22" />
+            <line className="core-radar-axis" x1="120" y1="116" x2="214" y2="184" />
+            <line className="core-radar-axis" x1="120" y1="116" x2="26" y2="184" />
+            <polygon className="core-radar-value" points={radarPoints} />
+            <text className="core-radar-label physical" x="120" y="15" textAnchor="middle">物理</text>
+            <text className="core-radar-label magic" x="224" y="202" textAnchor="end">魔法</text>
+            <text className="core-radar-label defense" x="16" y="202">防御</text>
+            <text className="core-radar-essence" x="120" y="116" textAnchor="middle">ESS {pet.stats.essence}/16</text>
+          </svg>
+        </div>
+        <div className="core-meter-list">
+          <CoreMeter label="PHYSICAL" value={pet.stats.physical} className="physical" />
+          <CoreMeter label="MAGIC" value={pet.stats.magic} className="magic" />
+          <CoreMeter label="DEFENSE" value={pet.stats.defense} className="defense" />
+        </div>
+      </div>
+      <div className="essence-list">
+        {pet.traits.map((trait) => <span className="essence-tag" key={trait}>{trait}</span>)}
+        {pet.lockedTraits.map((trait) => <span className="essence-tag locked" key={trait}>🔒 {trait} · Lv.2</span>)}
+      </div>
+    </article>
+  )
+}
+
+function CoreMeter({ label, value, className }: { label: string; value: number; className: string }) {
+  return (
+    <div className={`core-meter ${className}`}>
+      <div><span>{label}</span><strong>{value}</strong></div>
+      <div className="core-meter-track"><i style={{ width: `${Math.min(100, value / 1.2)}%` }} /></div>
+    </div>
+  )
 }
 
 function FighterHud({ name, hp, maxHp, right = false }: { name: string; hp: number; maxHp: number; right?: boolean }) {
