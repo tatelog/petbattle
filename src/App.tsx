@@ -107,6 +107,8 @@ function App() {
   const [onlineNotice, setOnlineNotice] = useState('ルームへ接続すると、PET能力値をREADYできます。')
   const [onlineOpponentId, setOnlineOpponentId] = useState<string | null>(null)
   const [onlineActionPending, setOnlineActionPending] = useState(false)
+  const [isArenaFullscreen, setIsArenaFullscreen] = useState(false)
+  const arenaPanelRef = useRef<HTMLElement | null>(null)
   const roomConnectionRef = useRef<RoomConnection | null>(null)
   const roomCleanupRef = useRef<(() => void) | null>(null)
   const onlineBattleStartedRef = useRef(false)
@@ -130,6 +132,14 @@ function App() {
     roomCleanupRef.current?.()
     roomConnectionRef.current?.close(1000, 'Page unmounted')
     if (koTimerRef.current !== null) window.clearTimeout(koTimerRef.current)
+  }, [])
+
+  useEffect(() => {
+    const syncFullscreenState = () => {
+      setIsArenaFullscreen(document.fullscreenElement === arenaPanelRef.current)
+    }
+    document.addEventListener('fullscreenchange', syncFullscreenState)
+    return () => document.removeEventListener('fullscreenchange', syncFullscreenState)
   }, [])
 
   // WebGLの描画停止やタブ復帰があっても、導入後に操作不能にならない保険。
@@ -235,6 +245,20 @@ function App() {
       makeBattle(leftPet, rightPet),
       '召喚シーケンス開始。コロシアムへ降下中…',
     )
+  }
+
+  async function toggleArenaFullscreen() {
+    const arenaPanel = arenaPanelRef.current
+    if (!arenaPanel) return
+    try {
+      if (document.fullscreenElement === arenaPanel) {
+        await document.exitFullscreen()
+      } else {
+        await arenaPanel.requestFullscreen()
+      }
+    } catch {
+      setBattleLog('全画面表示を開始できませんでした。ブラウザの全画面設定を確認してください。')
+    }
   }
 
   function selectBattleMode(nextMode: BattleMode) {
@@ -645,7 +669,7 @@ function App() {
             <div className={`status-message ${error ? 'error' : ''}`}>{error ?? message}</div>
           </section>
         ) : (
-          <section className="panel arena-panel">
+          <section ref={arenaPanelRef} className={`panel arena-panel ${isArenaFullscreen ? 'is-fullscreen' : ''}`}>
             <div className="arena-stage">
               <Arena3D
                 leftPet={{ name: leftPet.name, imageUrl: leftPet.imageUrl, accentColor: leftPet.accentColor, hp: leftCombatant.hp, maxHp: leftCombatant.maxHp }}
@@ -667,18 +691,33 @@ function App() {
                       <span className="status-dot" />{onlineStatusLabel(onlineStatus)}
                     </div>
                   )}
+                  <button
+                    type="button"
+                    className="arena-fullscreen-button"
+                    aria-label={isArenaFullscreen ? 'バトル画面の全画面表示を終了' : 'バトル画面を全画面表示'}
+                    aria-pressed={isArenaFullscreen}
+                    onClick={toggleArenaFullscreen}
+                  >
+                    <span aria-hidden="true">{isArenaFullscreen ? '↙' : '⛶'}</span>
+                    {isArenaFullscreen ? 'EXIT FULL SCREEN' : 'FULL SCREEN'}
+                  </button>
                 </div>
                 <FighterHud name={displayedRightPet.name} hp={rightCombatant.hp} maxHp={rightCombatant.maxHp} right />
               </div>
               <div className="battle-bottom">
-                <div className="action-bar" aria-label="バトル行動">
-                  <ActionButton action="physical" icon="⚔" label="物理" note="魔法を中断" disabled={!introDone || battle.status !== 'active' || (battleMode === 'online' && (onlineActionPending || onlineStatus !== 'active'))} onClick={playTurn} />
-                  <ActionButton action="magic" icon="✦" label="魔法" note="防御を貫通" disabled={!introDone || battle.status !== 'active' || (battleMode === 'online' && (onlineActionPending || onlineStatus !== 'active'))} onClick={playTurn} />
-                  <ActionButton action="defense" icon="⬡" label="防御" note="物理をカウンター" disabled={!introDone || battle.status !== 'active' || (battleMode === 'online' && (onlineActionPending || onlineStatus !== 'active'))} onClick={playTurn} />
+                <div className="arena-command-deck">
+                  <div className="arena-command-heading">
+                    <span>BATTLE COMMAND</span>
+                    <p aria-live="polite">{battleLog}</p>
+                  </div>
+                  <div className="action-bar" aria-label="バトル行動">
+                    <ActionButton action="physical" icon="⚔" label="物理" note="魔法を中断" disabled={!introDone || battle.status !== 'active' || (battleMode === 'online' && (onlineActionPending || onlineStatus !== 'active'))} onClick={playTurn} />
+                    <ActionButton action="magic" icon="✦" label="魔法" note="防御を貫通" disabled={!introDone || battle.status !== 'active' || (battleMode === 'online' && (onlineActionPending || onlineStatus !== 'active'))} onClick={playTurn} />
+                    <ActionButton action="defense" icon="⬡" label="防御" note="物理をカウンター" disabled={!introDone || battle.status !== 'active' || (battleMode === 'online' && (onlineActionPending || onlineStatus !== 'active'))} onClick={playTurn} />
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="status-message" style={{ position: 'absolute', left: 16, right: 16, bottom: 104, zIndex: 6 }}>{battleLog}</div>
             {battleMode === 'online' && (onlineStatus === 'disconnected' || onlineStatus === 'error') && !showResult && (
               <div className="connection-banner" role="alert">
                 <strong>{onlineStatus === 'disconnected' ? 'CONNECTION PAUSED' : 'CONNECTION ERROR'}</strong>
