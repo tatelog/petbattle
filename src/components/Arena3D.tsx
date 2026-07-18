@@ -456,12 +456,14 @@ function PetStand({
     const time = clock.elapsedTime
     entranceStartedAt.current ??= time
     const entranceAge = time - entranceStartedAt.current
+    const entranceDelay = side === 'left' ? 2.5 : 4.12
+    const entranceDuration = side === 'left' ? 1.55 : 0.62
     const entranceProgress = skipped || reducedMotion
       ? 1
-      : easeOutCubic(clamp01((entranceAge - 2.65) / 1.55))
+      : easeOutCubic(clamp01((entranceAge - entranceDelay) / entranceDuration))
     const direction = side === 'left' ? -1 : 1
     if (stand.current) {
-      stand.current.visible = skipped || reducedMotion || entranceAge >= 2.5
+      stand.current.visible = skipped || reducedMotion || entranceAge >= entranceDelay
       stand.current.position.set(
         SIDE_X[side] + direction * (1 - entranceProgress) * 4.1,
         -0.55 * (1 - entranceProgress),

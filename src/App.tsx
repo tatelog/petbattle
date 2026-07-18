@@ -567,6 +567,7 @@ function App() {
                   : rightPet}
                 role={battleMode === 'online' ? 'ONLINE CHALLENGER' : 'ARENA RIVAL'}
                 opponent
+                concealed
               />
             </div>
             <div className="analysis-strip" aria-label="PET Core能力値">
@@ -728,12 +729,44 @@ function App() {
   )
 }
 
-function PetCard({ pet, role, opponent = false, onFile }: { pet: PetView; role: string; opponent?: boolean; onFile?: (file: File | undefined) => void }) {
+function PetCard({
+  pet,
+  role,
+  opponent = false,
+  concealed = false,
+  onFile,
+}: {
+  pet: PetView
+  role: string
+  opponent?: boolean
+  concealed?: boolean
+  onFile?: (file: File | undefined) => void
+}) {
+  const displayName = concealed ? 'UNKNOWN PET' : pet.name
+  const displayDescription = concealed
+    ? '姿・属性・能力はBATTLE STARTで初めて公開されます。'
+    : pet.description
+
   return (
-    <article className={`pet-card ${opponent ? 'opponent' : ''}`}>
-      <img className="pet-visual" src={pet.imageUrl} alt="" />
+    <article className={`pet-card ${opponent ? 'opponent' : ''} ${concealed ? 'concealed' : ''}`}>
+      <div className="pet-summon-stage" aria-hidden="true">
+        <div className="summon-beam" />
+        {concealed ? (
+          <div className="pet-mystery"><span>?</span></div>
+        ) : (
+          <img
+            key={pet.imageUrl}
+            className="pet-visual"
+            src={pet.imageUrl}
+            alt=""
+          />
+        )}
+        <div className="summon-sparks" />
+        <div className="summon-circle" />
+      </div>
       <div className="pet-card-content">
-        <div className="pet-role">{role}</div><h3>{pet.name}</h3><p>{pet.description}</p>
+        <div className="pet-role">{role}</div><h3>{displayName}</h3><p>{displayDescription}</p>
+        {concealed && <div className="mystery-seal">SEALED UNTIL BATTLE</div>}
         {onFile && <label className="upload-button">画像を選ぶ<input className="file-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onFile(event.target.files?.[0])} /></label>}
       </div>
     </article>
