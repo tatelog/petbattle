@@ -60,6 +60,7 @@ const battleWorkerUrl = (
   ''
 ).trim()
 const onlineConfigured = battleWorkerUrl.length > 0
+const lunaConfigured = lunaWorkerConfigured()
 
 const demoLeft: PetView = {
   id: 'player',
@@ -93,7 +94,11 @@ function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [message, setMessage] = useState('サンプルPETです。好きな画像へ差し替えられます。')
+  const [message, setMessage] = useState(
+    lunaConfigured
+      ? 'サンプルPETです。好きな画像へ差し替えられます。'
+      : 'APIなしのローカルモードです。画像解析からCPUバトルまでそのまま遊べます。',
+  )
   const [error, setError] = useState<string | null>(null)
   const [battle, setBattle] = useState<BattleState>(() => makeBattle(demoLeft, demoRight))
   const [arenaEvent, setArenaEvent] = useState<ArenaEvent | undefined>()
@@ -203,7 +208,7 @@ function App() {
       const localManifest = await analyzeImageFile(selectedFile)
       let manifest = localManifest
       let analysisMessage = 'ローカル解析で16個の有効エッセンスを生成しました。'
-      if (lunaWorkerConfigured()) {
+      if (lunaConfigured) {
         try {
           const luna = await requestLunaAnalysis(selectedFile, localManifest.source.sha256)
           manifest = createPetManifest({
@@ -574,20 +579,26 @@ function App() {
           <section className="panel summon-panel">
             <div className="panel-heading">
               <div><h2>召喚ラボ</h2><p>Lv.1はJPEG・PNG・WebP、2 MiB、16エッセンスまで。</p></div>
-              <div className="level-pill">CORE LEVEL 1</div>
+              <div className="runtime-badges">
+                <div className={`runtime-pill ${lunaConfigured ? 'connected' : 'local'}`}>
+                  <i aria-hidden="true" />
+                  {lunaConfigured ? 'LOCAL + LUNA' : 'API不要 · LOCAL MODE'}
+                </div>
+                <div className="level-pill">CORE LEVEL 1</div>
+              </div>
             </div>
             <div className="summon-grid">
               <PetCard pet={leftPet} role="YOUR ARTIFACT" onFile={chooseFile} />
               <PetCoreVisualizer pet={leftPet} />
             </div>
             <button className="secondary-button" type="button" onClick={analyzeSelected} disabled={isAnalyzing} style={{ marginTop: 18 }}>
-              {isAnalyzing ? '意味を解析中…' : '意味を解析'}
+              {isAnalyzing ? '意味を解析中…' : lunaConfigured ? '意味を解析' : 'ローカルで意味を解析'}
             </button>
             <div className="battle-mode-card">
               <div className="battle-mode-heading">
                 <div>
                   <strong>対戦モード</strong>
-                  <span>ローカルCPU戦と、秘密行動の通信対戦を切り替えます。</span>
+                  <span>LOCAL CPUはAPI不要。通信対戦だけWorker接続を使用します。</span>
                 </div>
                 <div className="mode-tabs" role="tablist" aria-label="対戦モード">
                   <button
