@@ -100,6 +100,19 @@ describe('semantic essenceと能力値', () => {
 })
 
 describe('PET manifest', () => {
+  it('API解析なしでもローカル特徴だけで有効なPETを生成する', () => {
+    const manifest = createPetManifest({
+      sha256: '0'.repeat(64),
+      mime: 'image/png',
+      size: 512,
+      features: grayFeatures,
+    })
+
+    expect(manifest.analysisSource).toBe('fallback')
+    expect(manifest.analysis.essence.physical + manifest.analysis.essence.magic + manifest.analysis.essence.defense).toBe(16)
+    expect(manifest.stats).toEqual(statsFromEssence(manifest.analysis.essence))
+  })
+
   it('有効なLuna解析を採用し、AIに能力値を決めさせない', () => {
     const manifest = createPetManifest({
       sha256: 'a'.repeat(64),

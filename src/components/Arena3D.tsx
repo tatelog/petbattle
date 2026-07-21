@@ -28,7 +28,6 @@ import {
   DoubleSide,
   SRGBColorSpace,
   type Group,
-  type Mesh,
   type MeshBasicMaterial,
   type PerspectiveCamera,
   type PointLight,
@@ -66,6 +65,7 @@ export interface Arena3DProps {
   introKey?: string | number
   showSkipButton?: boolean
   skipLabel?: string
+  ariaLabel?: string
   onSkipIntro?: () => void
   onIntroComplete?: () => void
   reducedMotion?: boolean
@@ -395,29 +395,6 @@ interface PetStandProps {
   koEventId?: string | number
 }
 
-function HologramFrame({ color }: { color: string }) {
-  return (
-    <group position={[0, 0, 0.065]}>
-      <mesh position={[0, 1.39, 0]}>
-        <boxGeometry args={[2.38, 0.055, 0.045]} />
-        <meshBasicMaterial color={color} toneMapped={false} />
-      </mesh>
-      <mesh position={[0, -1.39, 0]}>
-        <boxGeometry args={[2.38, 0.055, 0.045]} />
-        <meshBasicMaterial color={color} toneMapped={false} />
-      </mesh>
-      <mesh position={[-1.19, 0, 0]}>
-        <boxGeometry args={[0.055, 2.82, 0.045]} />
-        <meshBasicMaterial color={color} toneMapped={false} />
-      </mesh>
-      <mesh position={[1.19, 0, 0]}>
-        <boxGeometry args={[0.055, 2.82, 0.045]} />
-        <meshBasicMaterial color={color} toneMapped={false} />
-      </mesh>
-    </group>
-  )
-}
-
 function PetStand({
   side,
   pet,
@@ -431,7 +408,6 @@ function PetStand({
   const texture = useTexture(pet.imageUrl.trim() || FALLBACK_TEXTURE)
   const stand = useRef<Group>(null)
   const floatingCard = useRef<Group>(null)
-  const scanLine = useRef<Mesh>(null)
   const entranceStartedAt = useRef<number | null>(null)
   const koStartedAt = useRef<number | null>(null)
   const maxHp = Math.max(1, pet.maxHp ?? 100)
@@ -456,12 +432,14 @@ function PetStand({
     const time = clock.elapsedTime
     entranceStartedAt.current ??= time
     const entranceAge = time - entranceStartedAt.current
+    const entranceDelay = side === 'left' ? 2.5 : 4.12
+    const entranceDuration = side === 'left' ? 1.55 : 0.62
     const entranceProgress = skipped || reducedMotion
       ? 1
-      : easeOutCubic(clamp01((entranceAge - 2.65) / 1.55))
+      : easeOutCubic(clamp01((entranceAge - entranceDelay) / entranceDuration))
     const direction = side === 'left' ? -1 : 1
     if (stand.current) {
-      stand.current.visible = skipped || reducedMotion || entranceAge >= 2.5
+      stand.current.visible = skipped || reducedMotion || entranceAge >= entranceDelay
       stand.current.position.set(
         SIDE_X[side] + direction * (1 - entranceProgress) * 4.1,
         -0.55 * (1 - entranceProgress),
@@ -484,9 +462,6 @@ function PetStand({
     card.rotation.z = (side === 'left' ? -1 : 1) * koProgress * 0.24
     card.scale.setScalar(1 - koProgress * 0.13)
 
-    if (scanLine.current) {
-      scanLine.current.position.y = reducedMotion ? 0 : ((time * 0.8) % 2.7) - 1.35
-    }
   })
 
   return (
@@ -495,34 +470,9 @@ function PetStand({
         <cylinderGeometry args={[1.34, 1.55, 0.34, 40]} />
         <meshStandardMaterial color="#332c32" metalness={0.5} roughness={0.52} />
       </mesh>
-      <mesh position={[0, 0.34, 0]}>
-        <torusGeometry args={[1.03, 0.055, 8, 40]} />
-        <meshBasicMaterial color={color} toneMapped={false} />
-      </mesh>
-      <mesh position={[0, 1.65, 0]}>
-        <cylinderGeometry args={[0.72, 1.05, 2.6, 32, 1, true]} />
-        <meshBasicMaterial
-          color={color}
-          transparent
-          opacity={0.07}
-          depthWrite={false}
-          side={DoubleSide}
-          blending={AdditiveBlending}
-        />
-      </mesh>
 
       <group ref={floatingCard} position={[0, 0, 0]}>
         <Billboard position={[0, 2.02, 0]}>
-          <mesh position={[0, 0, -0.035]}>
-            <planeGeometry args={[2.48, 2.92]} />
-            <meshBasicMaterial
-              color={color}
-              transparent
-              opacity={0.16}
-              depthWrite={false}
-              blending={AdditiveBlending}
-            />
-          </mesh>
           <mesh>
             <planeGeometry args={[2.26, 2.68]} />
             <meshBasicMaterial
@@ -532,17 +482,6 @@ function PetStand({
               opacity={knockedOut ? 0.58 : 0.94}
               side={DoubleSide}
               toneMapped={false}
-            />
-          </mesh>
-          <HologramFrame color={color} />
-          <mesh ref={scanLine} position={[0, -1.25, 0.09]}>
-            <planeGeometry args={[2.22, 0.065]} />
-            <meshBasicMaterial
-              color="#ffffff"
-              transparent
-              opacity={0.55}
-              depthWrite={false}
-              blending={AdditiveBlending}
             />
           </mesh>
           <Html center position={[0, -1.72, 0]} distanceFactor={8.4} zIndexRange={[20, 0]}>
@@ -1089,6 +1028,7 @@ export function Arena3D({
   introKey = 0,
   showSkipButton = true,
   skipLabel = 'イントロをスキップ',
+  ariaLabel = 'PETBATTLE 3Dバトルコロシアム',
   onSkipIntro,
   onIntroComplete,
   reducedMotion,
@@ -1144,7 +1084,7 @@ export function Arena3D({
   const classes = ['arena3d', className].filter(Boolean).join(' ')
 
   return (
-    <section className={classes} aria-label="PETBATTLE 3Dバトルコロシアム">
+    <section className={classes} aria-label={ariaLabel}>
       <Canvas
         className="arena3d__canvas"
         camera={{

@@ -22,6 +22,33 @@ import {
   type BattleEvent,
   type BattleState,
 } from './core/battle'
+import {
+  LEVEL_PROFILES,
+  awardBattleResult,
+  completeEvolutionQuest,
+  createInitialProgress,
+  levelForXp,
+  nextLevelProfile,
+  parseStoredProgress,
+  profileForLevel,
+  xpProgress,
+  type BattleReward,
+  type PlayerProgress,
+} from './core/progression'
+import {
+  buildSvgModel,
+  evolutionFocusLabel,
+  validateSvgText,
+  type EvolutionFocus,
+  type SvgModelArtifact,
+} from './core/evolution'
+import {
+  initialLocale,
+  initialTheme,
+  translate,
+  type Locale,
+  type ThemeMode,
+} from './i18n'
 import './App.css'
 
 type AppPhase = 'summon' | 'battle'
@@ -60,6 +87,24 @@ const battleWorkerUrl = (
   ''
 ).trim()
 const onlineConfigured = battleWorkerUrl.length > 0
+const lunaConfigured = lunaWorkerConfigured()
+const PROGRESS_STORAGE_KEY = 'petbattle-player-progress-v1'
+
+function loadPlayerProgress(): PlayerProgress {
+  if (import.meta.env.DEV) {
+    const qa = new URLSearchParams(window.location.search).get('qa')
+    if (qa === 'level1') return createInitialProgress()
+    if (qa === 'level2') {
+      return { ...createInitialProgress(), xp: profileForLevel(2).minXp, battles: 4, wins: 4, streak: 4, bestStreak: 4 }
+    }
+  }
+  try {
+    const stored = localStorage.getItem(PROGRESS_STORAGE_KEY)
+    return stored ? parseStoredProgress(JSON.parse(stored)) : createInitialProgress()
+  } catch {
+    return createInitialProgress()
+  }
+}
 
 const demoLeft: PetView = {
   id: 'player',
@@ -86,6 +131,8 @@ const demoRight: PetView = {
 const actions: readonly BattleAction[] = ['physical', 'magic', 'defense']
 
 function App() {
+  const [locale, setLocale] = useState<Locale>(initialLocale)
+  const [themeMode, setThemeMode] = useState<ThemeMode>(initialTheme)
   const [phase, setPhase] = useState<AppPhase>('summon')
   const [battleMode, setBattleMode] = useState<BattleMode>('local')
   const [leftPet, setLeftPet] = useState<PetView>(demoLeft)
@@ -93,24 +140,43 @@ function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [message, setMessage] = useState('サンプルPETです。好きな画像へ差し替えられます。')
+  const [message, setMessage] = useState(
+    lunaConfigured
+      ? translate(locale, 'messageSample')
+      : translate(locale, 'messageApiFree'),
+  )
   const [error, setError] = useState<string | null>(null)
   const [battle, setBattle] = useState<BattleState>(() => makeBattle(demoLeft, demoRight))
   const [arenaEvent, setArenaEvent] = useState<ArenaEvent | undefined>()
   const [introKey, setIntroKey] = useState(0)
   const [introDone, setIntroDone] = useState(false)
   const [showResult, setShowResult] = useState(false)
-  const [battleLog, setBattleLog] = useState('鳥瞰カメラからコロシアムへ降下します。')
+  const [battleLog, setBattleLog] = useState(() => translate(locale, 'messageDescend'))
   const [roomId, setRoomId] = useState(() => createRoomId())
   const [playerId, setPlayerId] = useState(() => getSessionPlayerId())
   const [onlineStatus, setOnlineStatus] = useState<OnlineStatus>('idle')
-  const [onlineNotice, setOnlineNotice] = useState('ルームへ接続すると、PET能力値をREADYできます。')
+  const [onlineNotice, setOnlineNotice] = useState(() => translate(locale, 'messageOnlinePrompt'))
   const [onlineOpponentId, setOnlineOpponentId] = useState<string | null>(null)
   const [onlineActionPending, setOnlineActionPending] = useState(false)
+  const [isArenaFullscreen, setIsArenaFullscreen] = useState(false)
+  const [progress, setProgress] = useState<PlayerProgress>(loadPlayerProgress)
+  const [lastReward, setLastReward] = useState<BattleReward | null>(null)
+  const [evolutionTheme, setEvolutionTheme] = useState(() => translate(locale, 'themeFox'))
+  const [evolutionFocus, setEvolutionFocus] = useState<EvolutionFocus>('silhouette')
+  const [evolutionPrimary, setEvolutionPrimary] = useState('#D96B45')
+  const [evolutionAccent, setEvolutionAccent] = useState('#69E7FF')
+  const [evolutionReflection, setEvolutionReflection] = useState('')
+  const [evolutionArtifact, setEvolutionArtifact] = useState<SvgModelArtifact | null>(null)
+  const [evolutionNotice, setEvolutionNotice] = useState(() => translate(locale, 'messageEvolutionPrompt'))
+  const [evolutionError, setEvolutionError] = useState<string | null>(null)
+  const arenaPanelRef = useRef<HTMLElement | null>(null)
   const roomConnectionRef = useRef<RoomConnection | null>(null)
   const roomCleanupRef = useRef<(() => void) | null>(null)
   const onlineBattleStartedRef = useRef(false)
   const koTimerRef = useRef<number | null>(null)
+  const battleActionsRef = useRef<BattleAction[]>([])
+  const rewardedBattleRef = useRef<string | null>(null)
+  const restoredArtifactRef = useRef(false)
 
   const reducedMotion = useMemo(
     () => {
@@ -121,10 +187,51 @@ function App() {
     },
     [],
   )
+  const coreLevel = levelForXp(progress.xp)
+  const coreProfile = profileForLevel(coreLevel)
+  const nextCoreProfile = nextLevelProfile(coreLevel)
+  const coreXp = xpProgress(progress)
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = themeMode
+    document.documentElement.lang = locale
+    try {
+      localStorage.setItem('petbattle-theme', themeMode)
+      localStorage.setItem('petbattle-locale', locale)
+    } catch {
+      // Storageなしでも表示設定は現在のセッションで有効。
+    }
+  }, [locale, themeMode])
 
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
   }, [previewUrl])
+
+  useEffect(() => {
+    if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('qa')) return
+    try {
+      localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(progress))
+    } catch {
+      // Storageを利用できない環境でも現在のセッションは継続する。
+    }
+  }, [progress])
+
+  useEffect(() => {
+    if (restoredArtifactRef.current) return
+    restoredArtifactRef.current = true
+    const savedArtifact = progress.portfolio.find((entry) => entry.artifact)?.artifact
+    if (!savedArtifact || !savedArtifact.dataUrl.startsWith('data:image/svg+xml')) return
+    setLeftPet({
+      id: 'player',
+      name: savedArtifact.name,
+      description: '学習ポートフォリオから復元した進化Artifact',
+      imageUrl: savedArtifact.dataUrl,
+      traits: [...savedArtifact.traits, 'Portfolio復元'],
+      lockedTraits: ['Effect Recipe · Lv.3', '3D Projection · Lv.4'],
+      stats: savedArtifact.stats,
+      accentColor: savedArtifact.accentColor,
+    })
+  }, [progress])
 
   useEffect(() => () => {
     roomCleanupRef.current?.()
@@ -132,15 +239,23 @@ function App() {
     if (koTimerRef.current !== null) window.clearTimeout(koTimerRef.current)
   }, [])
 
+  useEffect(() => {
+    const syncFullscreenState = () => {
+      setIsArenaFullscreen(document.fullscreenElement === arenaPanelRef.current)
+    }
+    document.addEventListener('fullscreenchange', syncFullscreenState)
+    return () => document.removeEventListener('fullscreenchange', syncFullscreenState)
+  }, [])
+
   // WebGLの描画停止やタブ復帰があっても、導入後に操作不能にならない保険。
   useEffect(() => {
     if (phase !== 'battle' || introDone) return
     const timer = window.setTimeout(() => {
       setIntroDone(true)
-      setBattleLog('BATTLE START — 行動を選択してください。')
+      setBattleLog(translate(locale, 'battleStart'))
     }, reducedMotion ? 20 : 5_600)
     return () => window.clearTimeout(timer)
-  }, [introDone, introKey, phase, reducedMotion])
+  }, [introDone, introKey, locale, phase, reducedMotion])
 
   const localCombatantId = battleMode === 'online' ? playerId : leftPet.id
   const leftCombatant =
@@ -158,14 +273,59 @@ function App() {
       }
     : rightPet
 
-  function chooseFile(file: File | undefined) {
+  useEffect(() => {
+    if (!showResult || battle.status !== 'finished') return
+    const rewardKey = `${introKey}:${battle.turn}:${battle.winnerId ?? 'draw'}`
+    if (rewardedBattleRef.current === rewardKey) return
+    rewardedBattleRef.current = rewardKey
+    const outcome = battle.winnerId === null
+      ? 'draw'
+      : battle.winnerId === localCombatantId
+        ? 'win'
+        : 'loss'
+    const reward = awardBattleResult(progress, outcome, battleActionsRef.current)
+    setProgress(reward.progress)
+    setLastReward(reward)
+  }, [battle.status, battle.turn, battle.winnerId, introKey, localCombatantId, progress, showResult])
+
+  async function chooseFile(file: File | undefined) {
     if (!file) return
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setError('Lv.1で召喚できる形式はJPEG・PNG・WebPです。')
+    const isSvg = file.type.toLowerCase() === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg')
+    if (isSvg) {
+      if (coreLevel < 2) {
+        setError(locale === 'ja' ? 'SVGはCore Level 2で解放されます。バトルXPを蓄積してください。' : 'SVG unlocks at Core Level 2. Earn more Battle XP.')
+        return
+      }
+      if (file.size > coreProfile.maxBytes) {
+        setError(locale === 'ja' ? `Lv.${coreLevel}のファイル上限は${Math.round(coreProfile.maxBytes / 1024 / 1024)} MiBです。` : `The Lv.${coreLevel} file limit is ${Math.round(coreProfile.maxBytes / 1024 / 1024)} MiB.`)
+        return
+      }
+      try {
+        const svg = validateSvgText(await file.text())
+        const nextUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+        if (previewUrl) URL.revokeObjectURL(previewUrl)
+        setSelectedFile(null)
+        setPreviewUrl(null)
+        setLeftPet((current) => ({
+          ...current,
+          name: file.name.replace(/\.svg$/i, '') || 'SVG Artifact',
+          description: '安全なSVG構造を検証したベクターArtifact',
+          imageUrl: nextUrl,
+          traits: ['SVG', 'ベクター', '構造検証済み', ...current.traits.slice(0, 3)],
+        }))
+        setError(null)
+        setMessage(locale === 'ja' ? 'SVGをローカル検証して召喚しました。外部画像や実行可能要素は含まれていません。' : 'SVG validated locally and summoned. It contains no external images or executable elements.')
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : locale === 'ja' ? 'SVGを検証できませんでした。' : 'The SVG could not be validated.')
+      }
       return
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setError('Lv.1のファイル上限は2 MiBです。')
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError(locale === 'ja' ? `Lv.${coreLevel}で召喚できる形式ではありません。` : `This format cannot be summoned at Lv.${coreLevel}.`)
+      return
+    }
+    if (file.size > coreProfile.maxBytes) {
+      setError(locale === 'ja' ? `Lv.${coreLevel}のファイル上限は${Math.round(coreProfile.maxBytes / 1024 / 1024)} MiBです。` : `The Lv.${coreLevel} file limit is ${Math.round(coreProfile.maxBytes / 1024 / 1024)} MiB.`)
       return
     }
     if (previewUrl) URL.revokeObjectURL(previewUrl)
@@ -175,16 +335,16 @@ function App() {
     setLeftPet((current) => ({
       ...current,
       name: file.name.replace(/\.[^.]+$/, '') || 'Unknown Artifact',
-      description: '解析待ちのデジタル表現',
+      description: locale === 'ja' ? '解析待ちのデジタル表現' : 'Digital artifact awaiting analysis',
       imageUrl: nextUrl,
     }))
     setError(null)
-    setMessage('画像を読み込みました。「意味を解析」を実行してください。')
+    setMessage(locale === 'ja' ? '画像を読み込みました。「意味を解析」を実行してください。' : 'Artifact loaded. Run Analyze meaning next.')
   }
 
   async function analyzeSelected() {
     if (!selectedFile) {
-      setMessage('サンプルPETの解析済みデータを使用します。')
+      setMessage(locale === 'ja' ? 'サンプルPETの解析済みデータを使用します。' : 'Using the pre-analyzed sample PET data.')
       return
     }
     setIsAnalyzing(true)
@@ -192,8 +352,8 @@ function App() {
     try {
       const localManifest = await analyzeImageFile(selectedFile)
       let manifest = localManifest
-      let analysisMessage = 'ローカル解析で16個の有効エッセンスを生成しました。'
-      if (lunaWorkerConfigured()) {
+      let analysisMessage = locale === 'ja' ? 'ローカル解析で16個の有効エッセンスを生成しました。' : 'Local analysis generated 16 valid essences.'
+      if (lunaConfigured) {
         try {
           const luna = await requestLunaAnalysis(selectedFile, localManifest.source.sha256)
           manifest = createPetManifest({
@@ -204,16 +364,18 @@ function App() {
             luna: luna.analysis,
             source: localManifest.source.origin,
           })
-          analysisMessage = 'GPT-5.6 Lunaが意味を認識し、固定ルールで能力値へ変換しました。'
+          analysisMessage = locale === 'ja' ? 'GPT-5.6 Lunaが意味を認識し、固定ルールで能力値へ変換しました。' : 'GPT-5.6 Luna recognized the meaning; deterministic rules converted it into stats.'
         } catch (lunaError) {
-          analysisMessage = `${lunaError instanceof Error ? lunaError.message : 'Luna解析に失敗しました'}。ローカル解析を使用します。`
+          analysisMessage = locale === 'ja'
+            ? `${lunaError instanceof Error ? lunaError.message : 'Luna解析に失敗しました'}。ローカル解析を使用します。`
+            : `${lunaError instanceof Error ? lunaError.message : 'Luna analysis failed'}. Falling back to local analysis.`
         }
       }
-      const analyzed = manifestToPetView(manifest, leftPet.imageUrl)
+      const analyzed = manifestToPetView(manifest, leftPet.imageUrl, locale)
       setLeftPet(analyzed)
       setMessage(analysisMessage)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '画像解析に失敗しました。')
+      setError(cause instanceof Error ? cause.message : locale === 'ja' ? '画像解析に失敗しました。' : 'Artifact analysis failed.')
     } finally {
       setIsAnalyzing(false)
     }
@@ -225,6 +387,9 @@ function App() {
     setIntroDone(false)
     setShowResult(false)
     setBattleLog(log)
+    setLastReward(null)
+    battleActionsRef.current = []
+    rewardedBattleRef.current = null
     setIntroKey((key) => key + 1)
     setPhase('battle')
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -233,8 +398,35 @@ function App() {
   function startLocalBattle() {
     enterArena(
       makeBattle(leftPet, rightPet),
-      '召喚シーケンス開始。コロシアムへ降下中…',
+      translate(locale, 'summonSequence'),
     )
+  }
+
+  function changeLocale(nextLocale: Locale) {
+    if (nextLocale === locale) return
+    setLocale(nextLocale)
+    setMessage(lunaConfigured ? translate(nextLocale, 'messageSample') : translate(nextLocale, 'messageApiFree'))
+    setBattleLog(translate(nextLocale, 'messageDescend'))
+    setOnlineNotice(translate(nextLocale, 'messageOnlinePrompt'))
+    setEvolutionNotice(translate(nextLocale, 'messageEvolutionPrompt'))
+  }
+
+  function toggleThemeMode() {
+    setThemeMode((current) => current === 'dark' ? 'light' : 'dark')
+  }
+
+  async function toggleArenaFullscreen() {
+    const arenaPanel = arenaPanelRef.current
+    if (!arenaPanel) return
+    try {
+      if (document.fullscreenElement === arenaPanel) {
+        await document.exitFullscreen()
+      } else {
+        await arenaPanel.requestFullscreen()
+      }
+    } catch {
+      setBattleLog(translate(locale, 'fullscreenError'))
+    }
   }
 
   function selectBattleMode(nextMode: BattleMode) {
@@ -244,7 +436,7 @@ function App() {
     setOnlineStatus('idle')
     setOnlineActionPending(false)
     setOnlineOpponentId(null)
-    setOnlineNotice('ルームへ接続すると、PET能力値をREADYできます。')
+    setOnlineNotice(translate(locale, 'messageOnlinePrompt'))
   }
 
   function clearRoomConnection() {
@@ -267,24 +459,24 @@ function App() {
     setOnlineActionPending(false)
     if (!silent) {
       setOnlineStatus('disconnected')
-      setOnlineNotice('ルームから切断しました。再接続できます。')
+      setOnlineNotice(locale === 'ja' ? 'ルームから切断しました。再接続できます。' : 'Disconnected from the room. You can reconnect.')
     }
   }
 
   function connectOnline() {
     if (!onlineConfigured) {
       setOnlineStatus('error')
-      setOnlineNotice('VITE_BATTLE_WORKER_URLを設定すると通信対戦を利用できます。')
+      setOnlineNotice(locale === 'ja' ? 'VITE_BATTLE_WORKER_URLを設定すると通信対戦を利用できます。' : 'Set VITE_BATTLE_WORKER_URL to enable online battles.')
       return
     }
     if (!/^[A-Za-z0-9_-]{3,64}$/.test(roomId)) {
       setOnlineStatus('error')
-      setOnlineNotice('ルームIDは半角英数字・_・-で3〜64文字にしてください。')
+      setOnlineNotice(locale === 'ja' ? 'ルームIDは半角英数字・_・-で3〜64文字にしてください。' : 'Room ID must be 3–64 letters, numbers, underscores, or hyphens.')
       return
     }
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(playerId)) {
       setOnlineStatus('error')
-      setOnlineNotice('プレイヤーIDは半角英数字・_・-で1〜64文字にしてください。')
+      setOnlineNotice(locale === 'ja' ? 'プレイヤーIDは半角英数字・_・-で1〜64文字にしてください。' : 'Player ID must be 1–64 letters, numbers, underscores, or hyphens.')
       return
     }
 
@@ -293,7 +485,7 @@ function App() {
     setOnlineOpponentId(null)
     setOnlineActionPending(false)
     setOnlineStatus('connecting')
-    setOnlineNotice('通信コロシアムへ接続しています…')
+    setOnlineNotice(locale === 'ja' ? '通信コロシアムへ接続しています…' : 'Connecting to the online colosseum…')
 
     try {
       const connection = connectRoom({
@@ -307,11 +499,11 @@ function App() {
       const handleClosed = () => {
         setOnlineActionPending(false)
         setOnlineStatus('disconnected')
-        setOnlineNotice('サーバーとの接続が切れました。再接続してください。')
+        setOnlineNotice(locale === 'ja' ? 'サーバーとの接続が切れました。再接続してください。' : 'Server connection lost. Please reconnect.')
       }
       const handleSocketError = () => {
         setOnlineStatus('error')
-        setOnlineNotice('通信エラーが発生しました。Worker URLとネットワークを確認してください。')
+        setOnlineNotice(locale === 'ja' ? '通信エラーが発生しました。Worker URLとネットワークを確認してください。' : 'A network error occurred. Check the Worker URL and your connection.')
       }
       connection.socket.addEventListener('close', handleClosed)
       connection.socket.addEventListener('error', handleSocketError)
@@ -324,7 +516,7 @@ function App() {
     } catch (cause) {
       clearRoomConnection()
       setOnlineStatus('error')
-      setOnlineNotice(cause instanceof Error ? cause.message : '通信対戦へ接続できませんでした。')
+      setOnlineNotice(cause instanceof Error ? cause.message : locale === 'ja' ? '通信対戦へ接続できませんでした。' : 'Could not connect to the online battle.')
     }
   }
 
@@ -339,17 +531,17 @@ function App() {
         defense: leftPet.stats.defense,
       })
       setOnlineStatus('waiting')
-      setOnlineNotice('READYを送信しました。相手の接続とREADYを待っています。')
+      setOnlineNotice(locale === 'ja' ? 'READYを送信しました。相手の接続とREADYを待っています。' : 'READY sent. Waiting for the opponent to connect and ready up.')
     } catch (cause) {
       setOnlineStatus('error')
-      setOnlineNotice(cause instanceof Error ? cause.message : 'READYを送信できませんでした。')
+      setOnlineNotice(cause instanceof Error ? cause.message : locale === 'ja' ? 'READYを送信できませんでした。' : 'Could not send READY.')
     }
   }
 
   function handleOnlineMessage(nextMessage: RoomServerMessage, expectedPlayerId: string) {
     if (nextMessage.type === 'connected') {
       setOnlineStatus('connected')
-      setOnlineNotice(`ROOM ${nextMessage.roomId} に接続しました。PETをREADYしてください。`)
+      setOnlineNotice(locale === 'ja' ? `ROOM ${nextMessage.roomId} に接続しました。PETをREADYしてください。` : `Connected to ROOM ${nextMessage.roomId}. READY your PET.`)
       return
     }
     if (nextMessage.type === 'presence') {
@@ -359,16 +551,16 @@ function App() {
       if (onlineBattleStartedRef.current) {
         if (opponent?.connected) {
           setOnlineStatus((current) => current === 'action-locked' ? current : 'active')
-          setOnlineNotice('2人の接続を確認。サーバー権威でターンを同期中です。')
+          setOnlineNotice(locale === 'ja' ? '2人の接続を確認。サーバー権威でターンを同期中です。' : 'Two players connected. Synchronizing the authoritative turn state.')
         } else {
           setOnlineStatus('disconnected')
-          setOnlineNotice('対戦相手との接続が切れました。再接続を待っています。')
+          setOnlineNotice(locale === 'ja' ? '対戦相手との接続が切れました。再接続を待っています。' : 'Opponent disconnected. Waiting for reconnection.')
         }
       } else if (local?.ready) {
         setOnlineStatus('waiting')
         setOnlineNotice(opponent?.ready
-          ? '双方READY。バトル状態を同期しています…'
-          : 'あなたはREADYです。対戦相手を待っています。')
+          ? locale === 'ja' ? '双方READY。バトル状態を同期しています…' : 'Both players READY. Synchronizing battle state…'
+          : locale === 'ja' ? 'あなたはREADYです。対戦相手を待っています。' : 'You are READY. Waiting for the opponent.')
       } else {
         setOnlineStatus('connected')
       }
@@ -377,7 +569,7 @@ function App() {
     if (nextMessage.type === 'battleStarted') {
       if (!nextMessage.state.combatants.some((combatant) => combatant.id === expectedPlayerId)) {
         setOnlineStatus('error')
-        setOnlineNotice('受信したバトル状態に自分のPETが存在しません。')
+        setOnlineNotice(locale === 'ja' ? '受信したバトル状態に自分のPETが存在しません。' : 'Your PET is missing from the received battle state.')
         return
       }
       const opponent = nextMessage.state.combatants.find(
@@ -388,13 +580,13 @@ function App() {
       setOnlineActionPending(false)
       setOnlineStatus('active')
       setOnlineNotice(nextMessage.state.status === 'finished'
-        ? '終了済みのバトル状態をサーバーから復元しました。'
-        : '対戦開始。行動は双方が揃うまで相手へ公開されません。')
+        ? locale === 'ja' ? '終了済みのバトル状態をサーバーから復元しました。' : 'Restored a completed battle from the server.'
+        : locale === 'ja' ? '対戦開始。行動は双方が揃うまで相手へ公開されません。' : 'Battle started. Actions stay hidden until both players submit.')
       enterArena(
         nextMessage.state,
         nextMessage.state.status === 'finished'
-          ? '通信同期完了。最終結果を復元しました。'
-          : '通信同期完了。コロシアムへ降下中…',
+          ? locale === 'ja' ? '通信同期完了。最終結果を復元しました。' : 'Synchronization complete. Final result restored.'
+          : locale === 'ja' ? '通信同期完了。コロシアムへ降下中…' : 'Synchronization complete. Descending into the colosseum…',
       )
       if (nextMessage.state.status === 'finished') setShowResult(true)
       return
@@ -402,21 +594,21 @@ function App() {
     if (nextMessage.type === 'actionAccepted') {
       setOnlineActionPending(true)
       setOnlineStatus('action-locked')
-      setOnlineNotice(`TURN ${nextMessage.turn} の行動を秘密状態で確定しました。`)
-      setBattleLog('行動を確定しました。対戦相手の選択を待っています…')
+      setOnlineNotice(locale === 'ja' ? `TURN ${nextMessage.turn} の行動を秘密状態で確定しました。` : `TURN ${nextMessage.turn} action locked in hidden state.`)
+      setBattleLog(locale === 'ja' ? '行動を確定しました。対戦相手の選択を待っています…' : 'Action locked. Waiting for the opponent…')
       return
     }
     if (nextMessage.type === 'turnResolved') {
       setBattle(nextMessage.state)
       setOnlineActionPending(false)
       setOnlineStatus('active')
-      setOnlineNotice('双方の行動をサーバーが判定しました。')
+      setOnlineNotice(locale === 'ja' ? '双方の行動をサーバーが判定しました。' : 'The server resolved both actions.')
       const nextArenaEvent = arenaEventFromBattleEvents(
         nextMessage.events,
         expectedPlayerId,
       )
       if (nextArenaEvent) setArenaEvent(nextArenaEvent)
-      setBattleLog(onlineTurnLabel(nextMessage.events, expectedPlayerId))
+      setBattleLog(onlineTurnLabel(nextMessage.events, expectedPlayerId, locale))
       if (nextMessage.state.status === 'finished') {
         const knockedOut = nextMessage.events.find(
           (event) => event.type === 'knockout',
@@ -439,8 +631,8 @@ function App() {
     if (nextMessage.type === 'opponentDisconnected') {
       setOnlineActionPending(false)
       setOnlineStatus('disconnected')
-      setOnlineNotice(`${nextMessage.playerId} が切断しました。再接続を待っています。`)
-      setBattleLog('対戦相手が切断しました。ターンを一時停止しています。')
+      setOnlineNotice(locale === 'ja' ? `${nextMessage.playerId} が切断しました。再接続を待っています。` : `${nextMessage.playerId} disconnected. Waiting for reconnection.`)
+      setBattleLog(locale === 'ja' ? '対戦相手が切断しました。ターンを一時停止しています。' : 'Opponent disconnected. The turn is paused.')
       return
     }
     setOnlineStatus('error')
@@ -458,16 +650,18 @@ function App() {
       ) return
       try {
         roomConnectionRef.current.action(playerAction)
+        battleActionsRef.current = [...battleActionsRef.current, playerAction]
         setOnlineActionPending(true)
         setOnlineStatus('action-locked')
-        setBattleLog(`${actionName(playerAction)}を秘密状態で送信中…`)
+        setBattleLog(locale === 'ja' ? `${actionName(playerAction, locale)}を秘密状態で送信中…` : `Sending ${actionName(playerAction, locale)} as a hidden action…`)
       } catch (cause) {
         setOnlineActionPending(false)
         setOnlineStatus('error')
-        setOnlineNotice(cause instanceof Error ? cause.message : '行動を送信できませんでした。')
+        setOnlineNotice(cause instanceof Error ? cause.message : locale === 'ja' ? '行動を送信できませんでした。' : 'Could not send the action.')
       }
       return
     }
+    battleActionsRef.current = [...battleActionsRef.current, playerAction]
     const cpuAction = actions[(battle.turn * 7 + battle.seed) % actions.length]
     const result = resolveTurn(battle, {
       [leftPet.id]: playerAction,
@@ -486,7 +680,7 @@ function App() {
     }
     setArenaEvent({ id: `${result.state.turn}-${Date.now()}`, type: eventType, actor })
     setBattle(result.state)
-    setBattleLog(turnLabel(playerAction, cpuAction, result.events))
+    setBattleLog(turnLabel(playerAction, cpuAction, result.events, locale))
 
     if (result.state.status === 'finished') {
       if (koTimerRef.current !== null) window.clearTimeout(koTimerRef.current)
@@ -502,12 +696,102 @@ function App() {
     }
   }
 
+  function prepareEvolutionArtifact() {
+    if (coreLevel < 2) {
+      const remainingXp = Math.max(0, profileForLevel(2).minXp - progress.xp)
+      setEvolutionError(locale === 'ja' ? `SVG Evolution Questはあと${remainingXp} XPで解放されます。` : `SVG Evolution Quest unlocks in ${remainingXp} XP.`)
+      return
+    }
+    try {
+      const artifact = buildSvgModel({
+        theme: evolutionTheme,
+        focus: evolutionFocus,
+        primaryColor: evolutionPrimary,
+        accentColor: evolutionAccent,
+        locale,
+      })
+      setEvolutionArtifact(artifact)
+      setEvolutionError(null)
+      setEvolutionNotice(locale === 'ja'
+        ? '助言を確認し、構造と見た目を比較してください。完成理由を言葉にすると進化を記録できます。'
+        : 'Compare the guidance with the structure and appearance. Explain your design choices to record the evolution.')
+    } catch (cause) {
+      setEvolutionError(cause instanceof Error ? cause.message : locale === 'ja' ? 'SVGモデルを構築できませんでした。' : 'The SVG model could not be built.')
+    }
+  }
+
+  function completeEvolutionArtifact() {
+    if (!evolutionArtifact) {
+      setEvolutionError(locale === 'ja' ? '先にSVGモデルを構築してください。' : 'Build the SVG model first.')
+      return
+    }
+    const reflection = evolutionReflection.trim()
+    if (reflection.length < 8) {
+      setEvolutionError(locale === 'ja' ? '何をどう作ったかを8文字以上で振り返ってください。' : 'Explain what and how you built it in at least 8 characters.')
+      return
+    }
+    const focusBonus = evolutionFocus === 'silhouette'
+      ? { physical: 8, magic: 2, defense: 3 }
+      : evolutionFocus === 'layers'
+        ? { physical: 2, magic: 3, defense: 8 }
+        : { physical: 3, magic: 8, defense: 2 }
+    const firstCompletion = !progress.completedQuestIds.includes(evolutionArtifact.questId)
+    const evolvedStats = firstCompletion ? {
+      hp: leftPet.stats.hp + 10,
+      physical: leftPet.stats.physical + focusBonus.physical,
+      magic: leftPet.stats.magic + focusBonus.magic,
+      defense: leftPet.stats.defense + focusBonus.defense,
+      essence: Math.max(leftPet.stats.essence, 32),
+    } : leftPet.stats
+    const completion = completeEvolutionQuest(progress, {
+      id: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `artifact-${Date.now()}`,
+      questId: evolutionArtifact.questId,
+      theme: evolutionTheme.trim(),
+      format: 'SVG',
+      focus: evolutionFocusLabel(evolutionFocus, locale),
+      reflection,
+      createdAt: new Date().toISOString(),
+      artifact: {
+        name: evolutionArtifact.name,
+        dataUrl: evolutionArtifact.dataUrl,
+        accentColor: evolutionAccent,
+        traits: [...evolutionArtifact.traits, locale === 'ja' ? '学習Evidence' : 'Learning Evidence'],
+        stats: evolvedStats,
+      },
+    })
+    setProgress(completion.progress)
+    setLeftPet({
+      ...leftPet,
+      name: evolutionArtifact.name,
+      description: locale === 'ja'
+        ? `${evolutionTheme.trim()}を基本図形とパスだけで構築したSVGモデル`
+        : `An SVG model of ${evolutionTheme.trim()} built only from basic shapes and paths`,
+      imageUrl: evolutionArtifact.dataUrl,
+      traits: [...evolutionArtifact.traits, locale === 'ja' ? '学習Evidence' : 'Learning Evidence'],
+      lockedTraits: ['Effect Recipe · Lv.3', '3D Projection · Lv.4'],
+      stats: evolvedStats,
+      accentColor: evolutionAccent,
+    })
+    setEvolutionError(null)
+    setEvolutionNotice(completion.xpGained > 0
+      ? locale === 'ja' ? `SVG Questを修了し、学習ポートフォリオへ保存しました。+${completion.xpGained} XP` : `SVG Quest completed and saved to the learning portfolio. +${completion.xpGained} XP`
+      : locale === 'ja' ? '同じQuestのモデルを更新しました。XPは初回修了時だけ獲得します。' : 'Updated this Quest model. XP is awarded only on first completion.')
+    setMessage(locale === 'ja' ? '進化したSVGモデルを次のバトルへ召喚できます。' : 'The evolved SVG model is ready for the next battle.')
+  }
+
+  function openEvolutionLab() {
+    backToLab()
+    window.setTimeout(() => {
+      document.getElementById('evolution-lab')?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' })
+    }, 60)
+  }
+
   function backToLab() {
     if (battleMode === 'online') {
       disconnectOnline(true)
       setOnlineStatus('idle')
       setRoomId(createRoomId())
-      setOnlineNotice('新しいルームを作成しました。接続後にPETをREADYできます。')
+      setOnlineNotice(locale === 'ja' ? '新しいルームを作成しました。接続後にPETをREADYできます。' : 'New room created. Connect, then READY your PET.')
     }
     setPhase('summon')
     setShowResult(false)
@@ -515,7 +799,7 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const activeStep = phase === 'summon' ? 1 : showResult ? 4 : 3
+  const activeStep = phase === 'summon' ? (progress.portfolio.length > 0 ? 4 : 1) : showResult ? 4 : 3
 
   return (
     <div className="app-shell">
@@ -527,68 +811,68 @@ function App() {
             <div className="brand-caption">PLAYABLE EXPRESSION TOKEN</div>
           </div>
         </div>
-        <div className="build-badge">OPENAI BUILD WEEK · PROTOTYPE</div>
+        <div className="header-actions">
+          <div className="build-badge">OPENAI BUILD WEEK · PROTOTYPE</div>
+          <button type="button" className="display-toggle" aria-label={translate(locale, themeMode === 'dark' ? 'switchToLight' : 'switchToDark')} onClick={toggleThemeMode}>
+            <span aria-hidden="true">{themeMode === 'dark' ? '☀' : '☾'}</span>{themeMode === 'dark' ? 'LIGHT' : 'DARK'}
+          </button>
+          <div className="locale-toggle" role="group" aria-label="Language">
+            <button type="button" className={locale === 'ja' ? 'active' : ''} aria-pressed={locale === 'ja'} onClick={() => changeLocale('ja')}>JA</button>
+            <button type="button" className={locale === 'en' ? 'active' : ''} aria-pressed={locale === 'en'} onClick={() => changeLocale('en')}>EN</button>
+          </div>
+        </div>
       </header>
 
       <main className="app-main">
         {phase === 'summon' && (
           <div className="hero-copy">
-            <div className="eyebrow">ANYTHING CAN ENTER THE ARENA</div>
-            <h1>あらゆる表現を、<br /><span>戦える存在へ。</span></h1>
-            <p>画像を意味エッセンスへ変換し、3Dコロシアムへ召喚。大量に生成した人ではなく、意味のある表現を作れる人が強くなる。</p>
+            <div className="eyebrow">{translate(locale, 'heroEyebrow')}</div>
+            <h1>{translate(locale, 'heroTitle1')}<br /><span>{translate(locale, 'heroTitle2')}</span></h1>
+            <p>{translate(locale, 'heroDescription')}</p>
           </div>
         )}
 
-        <div className="stepper" aria-label="進行状況">
-          {['召喚', '意味解析', '3Dバトル', '進化'].map((label, index) => {
+        <div className="stepper" aria-label={translate(locale, 'progressLabel')}>
+          {[translate(locale, 'stepSummon'), translate(locale, 'stepAnalyze'), translate(locale, 'stepBattle'), translate(locale, 'stepEvolution')].map((label, index) => {
             const step = index + 1
             return <span key={label} className={`step-chip ${step === activeStep ? 'active' : step < activeStep ? 'done' : ''}`}>{step}. {label}</span>
           })}
         </div>
 
         {phase === 'summon' ? (
+          <>
           <section className="panel summon-panel">
             <div className="panel-heading">
-              <div><h2>召喚ラボ</h2><p>Lv.1はJPEG・PNG・WebP、2 MiB、16エッセンスまで。</p></div>
-              <div className="level-pill">CORE LEVEL 1</div>
+              <div><h2>{translate(locale, 'summonLab')}</h2><p>Lv.{coreLevel} · {coreProfile.maxBytes / 1024 / 1024} MiB · {translate(locale, 'coreCapacity')} {coreProfile.essenceCapacity}</p></div>
+              <div className="runtime-badges">
+                <div className={`runtime-pill ${lunaConfigured ? 'connected' : 'local'}`}>
+                  <i aria-hidden="true" />
+                  {translate(locale, lunaConfigured ? 'localLuna' : 'apiFree')}
+                </div>
+                <div className="level-pill">CORE LEVEL {coreLevel}</div>
+              </div>
             </div>
             <div className="summon-grid">
-              <PetCard pet={leftPet} role="YOUR ARTIFACT" onFile={chooseFile} />
-              <div className="versus">VS</div>
               <PetCard
-                pet={battleMode === 'online'
-                  ? {
-                      ...rightPet,
-                      name: onlineOpponentId ?? '対戦相手を待機',
-                      description: onlineOpponentId
-                        ? '通信コロシアムへ接続中のチャレンジャー'
-                        : '同じルームIDを共有すると、ここへ対戦相手が現れます',
-                    }
-                  : rightPet}
-                role={battleMode === 'online' ? 'ONLINE CHALLENGER' : 'ARENA RIVAL'}
-                opponent
+                pet={leftPet}
+                role={translate(locale, 'yourArtifact')}
+                testId="player-summon-card"
+                locale={locale}
+                accept={coreLevel >= 2 ? 'image/jpeg,image/png,image/webp,image/svg+xml,.svg' : 'image/jpeg,image/png,image/webp'}
+                onFile={chooseFile}
               />
-            </div>
-            <div className="analysis-strip" aria-label="PET Core能力値">
-              <Stat label="物理" value={leftPet.stats.physical} className="physical" />
-              <Stat label="魔法" value={leftPet.stats.magic} className="magic" />
-              <Stat label="防御" value={leftPet.stats.defense} className="defense" />
-              <Stat label="有効エッセンス" value={`${leftPet.stats.essence}/16`} className="essence" />
-            </div>
-            <div className="essence-list">
-              {leftPet.traits.map((trait) => <span className="essence-tag" key={trait}>{trait}</span>)}
-              {leftPet.lockedTraits.map((trait) => <span className="essence-tag locked" key={trait}>🔒 {trait} · Lv.2</span>)}
+              <PetCoreVisualizer pet={leftPet} level={coreLevel} essenceCapacity={coreProfile.essenceCapacity} locale={locale} />
             </div>
             <button className="secondary-button" type="button" onClick={analyzeSelected} disabled={isAnalyzing} style={{ marginTop: 18 }}>
-              {isAnalyzing ? '意味を解析中…' : '意味を解析'}
+              {translate(locale, isAnalyzing ? 'analyzing' : lunaConfigured ? 'analyze' : 'analyzeLocal')}
             </button>
             <div className="battle-mode-card">
               <div className="battle-mode-heading">
                 <div>
-                  <strong>対戦モード</strong>
-                  <span>ローカルCPU戦と、秘密行動の通信対戦を切り替えます。</span>
+                  <strong>{translate(locale, 'battleMode')}</strong>
+                  <span>{translate(locale, 'battleModeDescription')}</span>
                 </div>
-                <div className="mode-tabs" role="tablist" aria-label="対戦モード">
+                <div className="mode-tabs" role="tablist" aria-label={translate(locale, 'battleMode')}>
                   <button
                     type="button"
                     role="tab"
@@ -610,8 +894,8 @@ function App() {
                 <div className="online-setup">
                   {!onlineConfigured && (
                     <div className="worker-notice" role="note">
-                      <strong>通信Workerが未設定です</strong>
-                      <span><code>VITE_BATTLE_WORKER_URL</code> にCloudflare WorkerのURLを設定すると利用できます。ローカルCPU戦はそのまま遊べます。</span>
+                      <strong>{translate(locale, 'workerMissing')}</strong>
+                      <span><code>VITE_BATTLE_WORKER_URL</code> — {translate(locale, 'workerMissingDescription')}</span>
                     </div>
                   )}
                   <div className="room-fields">
@@ -628,8 +912,8 @@ function App() {
                     <button
                       type="button"
                       className="room-refresh"
-                      aria-label="新しいルームIDを作成"
-                      title="新しいルームIDを作成"
+                      aria-label={translate(locale, 'newRoomId')}
+                      title={translate(locale, 'newRoomId')}
                       disabled={onlineStatus === 'connecting' || onlineStatus === 'waiting' || onlineStatus === 'active' || onlineStatus === 'action-locked'}
                       onClick={() => setRoomId(createRoomId())}
                     >↻</button>
@@ -646,29 +930,54 @@ function App() {
                   </div>
                   <div className={`online-status ${onlineStatus}`} aria-live="polite">
                     <span className="status-dot" aria-hidden="true" />
-                    <div><strong>{onlineStatusLabel(onlineStatus)}</strong><small>{onlineNotice}</small></div>
+                    <div><strong>{onlineStatusLabel(onlineStatus, locale)}</strong><small>{onlineNotice}</small></div>
                   </div>
                 </div>
               )}
             </div>
 
             {battleMode === 'local' ? (
-              <button className="primary-button" type="button" onClick={startLocalBattle}>CPU戦を3Dコロシアムで開始</button>
+              <button className="primary-button" type="button" onClick={startLocalBattle}>{translate(locale, 'startCpu')}</button>
             ) : onlineStatus === 'connected' ? (
-              <button className="primary-button" type="button" onClick={readyOnlinePet}>このPETをREADY</button>
+              <button className="primary-button" type="button" onClick={readyOnlinePet}>{translate(locale, 'readyPet')}</button>
             ) : onlineStatus === 'waiting' ? (
-              <button className="primary-button" type="button" disabled>対戦相手のREADYを待機中…</button>
+              <button className="primary-button" type="button" disabled>{translate(locale, 'waitOpponent')}</button>
             ) : onlineStatus === 'connecting' ? (
-              <button className="primary-button" type="button" disabled>通信コロシアムへ接続中…</button>
+              <button className="primary-button" type="button" disabled>{translate(locale, 'connectingArena')}</button>
             ) : (
               <button className="primary-button" type="button" disabled={!onlineConfigured} onClick={connectOnline}>
-                {onlineStatus === 'disconnected' || onlineStatus === 'error' ? 'ルームへ再接続' : 'ルームへ接続'}
+                {translate(locale, onlineStatus === 'disconnected' || onlineStatus === 'error' ? 'reconnectRoom' : 'connectRoom')}
               </button>
             )}
             <div className={`status-message ${error ? 'error' : ''}`}>{error ?? message}</div>
           </section>
+          <ProgressionPanel
+            progress={progress}
+            level={coreLevel}
+            xpCurrent={coreXp.current}
+            xpRequired={coreXp.required}
+            xpRatio={coreXp.ratio}
+            nextUnlock={nextCoreProfile ? levelUnlockLabel(nextCoreProfile.level, locale) : translate(locale, 'allUnlocked')}
+            theme={evolutionTheme}
+            focus={evolutionFocus}
+            primaryColor={evolutionPrimary}
+            accentColor={evolutionAccent}
+            reflection={evolutionReflection}
+            artifact={evolutionArtifact}
+            notice={evolutionNotice}
+            error={evolutionError}
+            locale={locale}
+            onThemeChange={setEvolutionTheme}
+            onFocusChange={setEvolutionFocus}
+            onPrimaryChange={setEvolutionPrimary}
+            onAccentChange={setEvolutionAccent}
+            onReflectionChange={setEvolutionReflection}
+            onBuild={prepareEvolutionArtifact}
+            onComplete={completeEvolutionArtifact}
+          />
+          </>
         ) : (
-          <section className="panel arena-panel">
+          <section ref={arenaPanelRef} className={`panel arena-panel ${isArenaFullscreen ? 'is-fullscreen' : ''}`}>
             <div className="arena-stage">
               <Arena3D
                 leftPet={{ name: leftPet.name, imageUrl: leftPet.imageUrl, accentColor: leftPet.accentColor, hp: leftCombatant.hp, maxHp: leftCombatant.maxHp }}
@@ -676,8 +985,10 @@ function App() {
                 event={arenaEvent}
                 introKey={introKey}
                 reducedMotion={reducedMotion}
-                onIntroComplete={() => { setIntroDone(true); setBattleLog('BATTLE START — 行動を選択してください。') }}
-                onSkipIntro={() => { setIntroDone(true); setBattleLog('BATTLE START — 導入演出をスキップしました。') }}
+                skipLabel={locale === 'ja' ? 'イントロをスキップ' : 'Skip intro'}
+                ariaLabel={locale === 'ja' ? 'PETBATTLE 3Dバトルコロシアム' : 'PETBATTLE 3D Battle Colosseum'}
+                onIntroComplete={() => { setIntroDone(true); setBattleLog(translate(locale, 'battleStart')) }}
+                onSkipIntro={() => { setIntroDone(true); setBattleLog(translate(locale, 'battleSkip')) }}
               />
             </div>
             <div className={`battle-overlay ${introDone ? 'intro-complete' : 'intro-active'}`}>
@@ -687,61 +998,314 @@ function App() {
                   <div className="turn-badge">TURN {battle.turn}</div>
                   {battleMode === 'online' && (
                     <div className={`arena-online-state ${onlineStatus}`}>
-                      <span className="status-dot" />{onlineStatusLabel(onlineStatus)}
+                      <span className="status-dot" />{onlineStatusLabel(onlineStatus, locale)}
                     </div>
                   )}
+                  <button
+                    type="button"
+                    className="arena-fullscreen-button"
+                    aria-label={translate(locale, isArenaFullscreen ? 'fullscreenClose' : 'fullscreenOpen')}
+                    aria-pressed={isArenaFullscreen}
+                    onClick={toggleArenaFullscreen}
+                  >
+                    <span aria-hidden="true">{isArenaFullscreen ? '↙' : '⛶'}</span>
+                    {isArenaFullscreen ? 'EXIT FULL SCREEN' : 'FULL SCREEN'}
+                  </button>
                 </div>
                 <FighterHud name={displayedRightPet.name} hp={rightCombatant.hp} maxHp={rightCombatant.maxHp} right />
               </div>
               <div className="battle-bottom">
-                <div className="action-bar" aria-label="バトル行動">
-                  <ActionButton action="physical" icon="⚔" label="物理" note="魔法を中断" disabled={!introDone || battle.status !== 'active' || (battleMode === 'online' && (onlineActionPending || onlineStatus !== 'active'))} onClick={playTurn} />
-                  <ActionButton action="magic" icon="✦" label="魔法" note="防御を貫通" disabled={!introDone || battle.status !== 'active' || (battleMode === 'online' && (onlineActionPending || onlineStatus !== 'active'))} onClick={playTurn} />
-                  <ActionButton action="defense" icon="⬡" label="防御" note="物理をカウンター" disabled={!introDone || battle.status !== 'active' || (battleMode === 'online' && (onlineActionPending || onlineStatus !== 'active'))} onClick={playTurn} />
+                <div className="arena-command-deck">
+                  <div className="arena-command-heading">
+                    <span>BATTLE COMMAND</span>
+                    <p aria-live="polite">{battleLog}</p>
+                  </div>
+                  <div className="action-bar" aria-label={translate(locale, 'battleActions')}>
+                    <ActionButton action="physical" icon="⚔" label={translate(locale, 'physical')} note={translate(locale, 'physicalCommandNote')} disabled={!introDone || battle.status !== 'active' || (battleMode === 'online' && (onlineActionPending || onlineStatus !== 'active'))} onClick={playTurn} />
+                    <ActionButton action="magic" icon="✦" label={translate(locale, 'magic')} note={translate(locale, 'magicCommandNote')} disabled={!introDone || battle.status !== 'active' || (battleMode === 'online' && (onlineActionPending || onlineStatus !== 'active'))} onClick={playTurn} />
+                    <ActionButton action="defense" icon="⬡" label={translate(locale, 'defense')} note={translate(locale, 'defenseCommandNote')} disabled={!introDone || battle.status !== 'active' || (battleMode === 'online' && (onlineActionPending || onlineStatus !== 'active'))} onClick={playTurn} />
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="status-message" style={{ position: 'absolute', left: 16, right: 16, bottom: 104, zIndex: 6 }}>{battleLog}</div>
             {battleMode === 'online' && (onlineStatus === 'disconnected' || onlineStatus === 'error') && !showResult && (
               <div className="connection-banner" role="alert">
                 <strong>{onlineStatus === 'disconnected' ? 'CONNECTION PAUSED' : 'CONNECTION ERROR'}</strong>
                 <span>{onlineNotice}</span>
-                <button type="button" onClick={backToLab}>召喚ラボへ戻る</button>
+                <button type="button" onClick={backToLab}>{translate(locale, 'backSummonLong')}</button>
               </div>
             )}
             {showResult && (
               <div className="result-card">
                 <div className="trophy">🏆</div>
                 <h2>{battle.winnerId === localCombatantId ? `${leftPet.name} WIN` : battle.winnerId === rightCombatant.id ? `${displayedRightPet.name} WIN` : 'DRAW'}</h2>
-                <p>バトル経験値を獲得しました。Lv.2ではCore容量が32へ増え、SVGと未解放エッセンスが利用できます。</p>
+                {lastReward ? (
+                  <>
+                    <div className="result-xp-line"><strong>+{lastReward.xpGained} XP</strong><span>{translate(locale, 'actionVariety', { value: lastReward.varietyBonus })}</span></div>
+                    <div className="result-level-line"><span>CORE LEVEL {lastReward.currentLevel}</span><b>{xpProgress(lastReward.progress).current} / {xpProgress(lastReward.progress).required || 'MAX'} XP</b></div>
+                    <div className="result-xp-track"><i style={{ width: `${xpProgress(lastReward.progress).ratio * 100}%` }} /></div>
+                    <p>{lastReward.leveledUp
+                      ? translate(locale, 'levelUp', { level: lastReward.currentLevel, unlock: levelUnlockLabel(lastReward.currentLevel, locale) })
+                      : nextLevelProfile(lastReward.currentLevel)
+                        ? translate(locale, 'xpRemaining', { xp: nextLevelProfile(lastReward.currentLevel)!.minXp - lastReward.progress.xp })
+                        : translate(locale, 'maxLevel')}</p>
+                  </>
+                ) : <p>{translate(locale, 'calculatingResult')}</p>}
                 <div className="result-actions">
-                  <button type="button" className="secondary-button" onClick={backToLab}>召喚ラボへ</button>
-                  {battleMode === 'local' && <button type="button" className="secondary-button" onClick={startLocalBattle}>再戦</button>}
+                  <button type="button" className="secondary-button" onClick={backToLab}>{translate(locale, 'backSummon')}</button>
+                  {coreLevel >= 2 && <button type="button" className="secondary-button" onClick={openEvolutionLab}>{translate(locale, 'evolutionLab')}</button>}
+                  {battleMode === 'local' && <button type="button" className="secondary-button" onClick={startLocalBattle}>{translate(locale, 'rematch')}</button>}
                 </div>
               </div>
             )}
           </section>
         )}
-        <div className="footer-note">PETBATTLE · 意味を理解し、表現を育てるバトルプロトタイプ</div>
+        <div className="footer-note">{translate(locale, 'footer')}</div>
       </main>
     </div>
   )
 }
 
-function PetCard({ pet, role, opponent = false, onFile }: { pet: PetView; role: string; opponent?: boolean; onFile?: (file: File | undefined) => void }) {
+function ProgressionPanel({
+  progress,
+  level,
+  xpCurrent,
+  xpRequired,
+  xpRatio,
+  nextUnlock,
+  theme,
+  focus,
+  primaryColor,
+  accentColor,
+  reflection,
+  artifact,
+  notice,
+  error,
+  locale,
+  onThemeChange,
+  onFocusChange,
+  onPrimaryChange,
+  onAccentChange,
+  onReflectionChange,
+  onBuild,
+  onComplete,
+}: {
+  progress: PlayerProgress
+  level: number
+  xpCurrent: number
+  xpRequired: number
+  xpRatio: number
+  nextUnlock: string
+  theme: string
+  focus: EvolutionFocus
+  primaryColor: string
+  accentColor: string
+  reflection: string
+  artifact: SvgModelArtifact | null
+  notice: string
+  error: string | null
+  locale: Locale
+  onThemeChange: (value: string) => void
+  onFocusChange: (value: EvolutionFocus) => void
+  onPrimaryChange: (value: string) => void
+  onAccentChange: (value: string) => void
+  onReflectionChange: (value: string) => void
+  onBuild: () => void
+  onComplete: () => void
+}) {
+  const svgUnlockXp = profileForLevel(2).minXp
+  const svgUnlocked = level >= 2
   return (
-    <article className={`pet-card ${opponent ? 'opponent' : ''}`}>
-      <img className="pet-visual" src={pet.imageUrl} alt="" />
+    <section id="evolution-lab" className="panel progression-panel">
+      <div className="progression-heading">
+        <div><span>{translate(locale, 'coreJourney')}</span><h2>{translate(locale, 'growthLab')}</h2><p>{translate(locale, 'growthDescription')}</p></div>
+        <div className="progression-level">LV.{level}</div>
+      </div>
+
+      <div className="progression-summary">
+        <div className="xp-card">
+          <div><span>CORE EXPERIENCE</span><strong>{progress.xp} XP</strong></div>
+          <div className="xp-track" aria-label={`レベル経験値 ${xpCurrent} / ${xpRequired || 'MAX'}`}><i style={{ width: `${xpRatio * 100}%` }} /></div>
+          <small>{xpRequired > 0 ? translate(locale, 'nextUnlock', { name: nextUnlock, xp: xpRequired - xpCurrent }) : translate(locale, 'allUnlocked')}</small>
+        </div>
+        <div className="career-stats">
+          <div><span>{translate(locale, 'battles')}</span><strong>{progress.battles}</strong></div>
+          <div><span>{translate(locale, 'wins')}</span><strong>{progress.wins}</strong></div>
+          <div><span>{translate(locale, 'streak')}</span><strong>{progress.streak}</strong></div>
+          <div><span>{translate(locale, 'quests')}</span><strong>{progress.completedQuestIds.length}</strong></div>
+        </div>
+      </div>
+
+      <div className="mastery-row" aria-label={translate(locale, 'masteryLabel')}>
+        <span>{translate(locale, 'physicalMastery', { value: progress.mastery.physical })}</span>
+        <span>{translate(locale, 'magicMastery', { value: progress.mastery.magic })}</span>
+        <span>{translate(locale, 'defenseMastery', { value: progress.mastery.defense })}</span>
+      </div>
+
+      <div className="level-roadmap" aria-label={translate(locale, 'roadmap')}>
+        {LEVEL_PROFILES.map((profile) => (
+          <article key={profile.level} className={profile.level === level ? 'current' : profile.level < level ? 'unlocked' : 'locked'}>
+            <div><b>LV.{profile.level}</b><span>{profile.minXp} XP</span></div>
+            <strong>{levelUnlockLabel(profile.level, locale)}</strong>
+            <small>{profile.formats.join(' / ')} · {profile.essenceCapacity} ESS</small>
+            <p>{levelLearningLabel(profile.level, locale)}</p>
+          </article>
+        ))}
+      </div>
+
+      <div className={`evolution-quest ${svgUnlocked ? 'unlocked' : 'locked'}`}>
+        <div className="quest-heading">
+          <div><span>EVOLUTION QUEST 01 · SVG</span><h3>{translate(locale, 'questTitle')}</h3></div>
+          <div className="quest-state">{svgUnlocked ? 'UNLOCKED' : `${Math.max(0, svgUnlockXp - progress.xp)} XP TO UNLOCK`}</div>
+        </div>
+        {!svgUnlocked ? (
+          <div className="quest-locked-copy">
+            <strong>{translate(locale, 'unlockInWins')}</strong>
+            <p>{translate(locale, 'questLockedDescription')}</p>
+          </div>
+        ) : (
+          <div className="quest-workspace">
+            <div className="quest-form">
+              <label><span>{translate(locale, 'themeLabel')}</span><input list="theme-examples" value={theme} maxLength={30} onChange={(event) => onThemeChange(event.target.value)} /></label>
+              <datalist id="theme-examples"><option value={translate(locale, 'themeFox')} /><option value={translate(locale, 'themeOwl')} /><option value={translate(locale, 'themeTurtle')} /><option value={translate(locale, 'themeWolf')} /></datalist>
+              <label><span>{translate(locale, 'focusLabel')}</span><select value={focus} onChange={(event) => onFocusChange(event.target.value as EvolutionFocus)}><option value="silhouette">{translate(locale, 'focusSilhouette')}</option><option value="layers">{translate(locale, 'focusLayers')}</option><option value="symbol">{translate(locale, 'focusSymbol')}</option></select></label>
+              <div className="color-fields">
+                <label><span>{translate(locale, 'primaryColor')}</span><input type="color" value={primaryColor} onChange={(event) => onPrimaryChange(event.target.value)} /></label>
+                <label><span>{translate(locale, 'glowColor')}</span><input type="color" value={accentColor} onChange={(event) => onAccentChange(event.target.value)} /></label>
+              </div>
+              <button type="button" className="secondary-button" onClick={onBuild}>{translate(locale, 'buildSvg')}</button>
+            </div>
+            <div className="quest-output">
+              {artifact ? (
+                <>
+                  <div className="svg-preview"><img src={artifact.dataUrl} alt={locale === 'ja' ? `${theme}のSVGモデルプレビュー` : `SVG model preview: ${theme}`} /></div>
+                  <div className="advice-grid">
+                    <div><span>OBSERVE</span><p>{artifact.advice.observation}</p></div>
+                    <div><span>DECOMPOSE</span><p>{artifact.advice.decomposition}</p></div>
+                    <div><span>BUILD</span><p>{artifact.advice.construction}</p></div>
+                    <div><span>VERIFY</span><p>{artifact.advice.validation}</p></div>
+                  </div>
+                  <label className="reflection-field"><span>{translate(locale, 'reflectionLabel')}</span><textarea value={reflection} rows={3} placeholder={translate(locale, 'reflectionPlaceholder')} onChange={(event) => onReflectionChange(event.target.value)} /></label>
+                  <button type="button" className="primary-button quest-complete" onClick={onComplete}>{translate(locale, 'saveEvidence')}</button>
+                </>
+              ) : <div className="quest-placeholder"><span>{translate(locale, 'noSourceImage')}</span><strong>{translate(locale, 'thinkStructure')}</strong><p>{translate(locale, 'thinkStructureDescription')}</p></div>}
+            </div>
+          </div>
+        )}
+        <div className={`quest-notice ${error ? 'error' : ''}`} aria-live="polite">{error ?? notice}</div>
+      </div>
+
+      {progress.portfolio.length > 0 && (
+        <div className="portfolio-list"><h3>{translate(locale, 'portfolio')}</h3>{progress.portfolio.slice(0, 4).map((entry) => <article key={entry.id}><div><strong>{entry.theme}</strong><span>{entry.format} · {entry.focus}</span></div><p>{entry.reflection}</p></article>)}</div>
+      )}
+    </section>
+  )
+}
+
+function PetCard({
+  pet,
+  role,
+  accept = 'image/jpeg,image/png,image/webp',
+  testId,
+  locale,
+  onFile,
+}: {
+  pet: PetView
+  role: string
+  accept?: string
+  testId?: string
+  locale: Locale
+  onFile?: (file: File | undefined) => void | Promise<void>
+}) {
+  return (
+    <article className="pet-card" data-testid={testId}>
+      <div className="pet-summon-stage" aria-hidden="true">
+        <div className="summon-beam" />
+        <div className="summon-circle" />
+        <img
+          key={pet.imageUrl}
+          className="pet-visual"
+          src={pet.imageUrl}
+          alt=""
+        />
+        <div className="summon-sparks" />
+        <div className="summon-front-arc" />
+      </div>
       <div className="pet-card-content">
         <div className="pet-role">{role}</div><h3>{pet.name}</h3><p>{pet.description}</p>
-        {onFile && <label className="upload-button">画像を選ぶ<input className="file-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onFile(event.target.files?.[0])} /></label>}
+        {onFile && <label className="upload-button">{translate(locale, 'artifactChoose')}<input className="file-input" type="file" accept={accept} onChange={(event) => { void onFile(event.target.files?.[0]) }} /></label>}
       </div>
     </article>
   )
 }
 
-function Stat({ label, value, className }: { label: string; value: number | string; className: string }) {
-  return <div className={`analysis-stat ${className}`}><span>{label}</span><strong>{value}</strong></div>
+function PetCoreVisualizer({ pet, level, essenceCapacity, locale }: { pet: PetView; level: number; essenceCapacity: number; locale: Locale }) {
+  const center = { x: 120, y: 116 }
+  const axes = {
+    physical: { x: 120, y: 22 },
+    magic: { x: 214, y: 184 },
+    defense: { x: 26, y: 184 },
+  }
+  const point = (axis: { x: number; y: number }, value: number) => {
+    const ratio = Math.max(0.08, Math.min(1, value / 120))
+    return `${(center.x + (axis.x - center.x) * ratio).toFixed(1)},${(center.y + (axis.y - center.y) * ratio).toFixed(1)}`
+  }
+  const radarPoints = [
+    point(axes.physical, pet.stats.physical),
+    point(axes.magic, pet.stats.magic),
+    point(axes.defense, pet.stats.defense),
+  ].join(' ')
+
+  return (
+    <article className="core-visualizer" data-testid="player-core-visualizer" aria-label={translate(locale, 'petParameters')}>
+      <div className="core-visualizer-heading">
+        <div><span>PET CORE SCAN</span><h3>{translate(locale, 'parameterAnalysis')}</h3></div>
+        <div className="core-level-indicator"><i /> LEVEL {level}</div>
+      </div>
+      <div className="core-visualizer-grid">
+        <div className="core-radar-wrap">
+          <svg className="core-radar" viewBox="0 0 240 220" role="img" aria-label={`${translate(locale, 'physical')} ${pet.stats.physical}, ${translate(locale, 'magic')} ${pet.stats.magic}, ${translate(locale, 'defense')} ${pet.stats.defense}`}>
+            <defs>
+              <linearGradient id="core-radar-fill" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stopColor="#ff957d" />
+                <stop offset="0.5" stopColor="#a9a2ff" />
+                <stop offset="1" stopColor="#7ce9d3" />
+              </linearGradient>
+            </defs>
+            <polygon className="core-radar-grid" points="120,22 214,184 26,184" />
+            <polygon className="core-radar-grid inner" points="120,53 183,161 57,161" />
+            <polygon className="core-radar-grid inner" points="120,84 151,139 89,139" />
+            <line className="core-radar-axis" x1="120" y1="116" x2="120" y2="22" />
+            <line className="core-radar-axis" x1="120" y1="116" x2="214" y2="184" />
+            <line className="core-radar-axis" x1="120" y1="116" x2="26" y2="184" />
+            <polygon className="core-radar-value" points={radarPoints} />
+            <text className="core-radar-label physical" x="120" y="15" textAnchor="middle">{translate(locale, 'physical')}</text>
+            <text className="core-radar-label magic" x="224" y="202" textAnchor="end">{translate(locale, 'magic')}</text>
+            <text className="core-radar-label defense" x="16" y="202">{translate(locale, 'defense')}</text>
+            <text className="core-radar-essence" x="120" y="116" textAnchor="middle">ESS {pet.stats.essence}/{essenceCapacity}</text>
+          </svg>
+        </div>
+        <div className="core-meter-list">
+          <CoreMeter label="PHYSICAL" value={pet.stats.physical} className="physical" />
+          <CoreMeter label="MAGIC" value={pet.stats.magic} className="magic" />
+          <CoreMeter label="DEFENSE" value={pet.stats.defense} className="defense" />
+        </div>
+      </div>
+      <div className="essence-list">
+        {pet.traits.map((trait) => <span className="essence-tag" key={trait}>{trait}</span>)}
+        {pet.lockedTraits.map((trait) => <span className="essence-tag locked" key={trait}>🔒 {trait.includes('Lv.') ? trait : `${trait} · Lv.${Math.max(2, level + 1)}`}</span>)}
+      </div>
+    </article>
+  )
+}
+
+function CoreMeter({ label, value, className }: { label: string; value: number; className: string }) {
+  return (
+    <div className={`core-meter ${className}`}>
+      <div><span>{label}</span><strong>{value}</strong></div>
+      <div className="core-meter-track"><i style={{ width: `${Math.min(100, value / 1.2)}%` }} /></div>
+    </div>
+  )
 }
 
 function FighterHud({ name, hp, maxHp, right = false }: { name: string; hp: number; maxHp: number; right?: boolean }) {
@@ -760,19 +1324,32 @@ function makeBattle(left: PetView, right: PetView): BattleState {
   )
 }
 
-function turnLabel(player: BattleAction, cpu: BattleAction, events: ReturnType<typeof resolveTurn>['events']): string {
-  const names: Record<BattleAction, string> = { physical: '物理', magic: '魔法', defense: '防御' }
+function turnLabel(player: BattleAction, cpu: BattleAction, events: ReturnType<typeof resolveTurn>['events'], locale: Locale): string {
+  const names: Record<BattleAction, string> = {
+    physical: translate(locale, 'physical'),
+    magic: translate(locale, 'magic'),
+    defense: translate(locale, 'defense'),
+  }
   const impact = events.find((event) => event.type === 'counter' || event.type === 'hit')
-  if (impact?.type === 'counter') return `あなた：${names[player]} ／ 相手：${names[cpu]} — カウンター ${impact.damage}ダメージ！`
-  if (impact?.type === 'hit') return `あなた：${names[player]} ／ 相手：${names[cpu]} — ${impact.damage}ダメージ！`
-  return `あなた：${names[player]} ／ 相手：${names[cpu]} — 防御が拮抗。`
+  const choices = locale === 'ja'
+    ? `あなた：${names[player]} ／ 相手：${names[cpu]}`
+    : `You: ${names[player]} / Opponent: ${names[cpu]}`
+  if (impact?.type === 'counter') return locale === 'ja' ? `${choices} — カウンター ${impact.damage}ダメージ！` : `${choices} — Counter for ${impact.damage} damage!`
+  if (impact?.type === 'hit') return locale === 'ja' ? `${choices} — ${impact.damage}ダメージ！` : `${choices} — ${impact.damage} damage!`
+  return locale === 'ja' ? `${choices} — 防御が拮抗。` : `${choices} — Defenses are evenly matched.`
 }
 
-function actionName(action: BattleAction): string {
-  return { physical: '物理', magic: '魔法', defense: '防御' }[action]
+function actionName(action: BattleAction, locale: Locale): string {
+  return translate(locale, action)
 }
 
-function onlineStatusLabel(status: OnlineStatus): string {
+function onlineStatusLabel(status: OnlineStatus, locale: Locale): string {
+  if (locale === 'en') {
+    return {
+      idle: 'OFFLINE', connecting: 'CONNECTING', connected: 'CONNECTED', waiting: 'READY · WAITING',
+      active: 'ONLINE', 'action-locked': 'ACTION LOCKED', disconnected: 'DISCONNECTED', error: 'NETWORK ERROR',
+    }[status]
+  }
   const labels: Record<OnlineStatus, string> = {
     idle: '未接続',
     connecting: '接続中',
@@ -811,6 +1388,7 @@ function arenaEventFromBattleEvents(
 function onlineTurnLabel(
   events: readonly BattleEvent[],
   localPlayerId: string,
+  locale: Locale,
 ): string {
   const revealed = events.find((event) => event.type === 'actionsRevealed')
   const localAction = revealed?.type === 'actionsRevealed'
@@ -820,20 +1398,26 @@ function onlineTurnLabel(
     ? Object.entries(revealed.actions).find(([id]) => id !== localPlayerId)?.[1]
     : undefined
   const choices = localAction && opponentAction
-    ? `あなた：${actionName(localAction)} ／ 相手：${actionName(opponentAction)}`
-    : '双方の行動を公開'
+    ? locale === 'ja'
+      ? `あなた：${actionName(localAction, locale)} ／ 相手：${actionName(opponentAction, locale)}`
+      : `You: ${actionName(localAction, locale)} / Opponent: ${actionName(opponentAction, locale)}`
+    : locale === 'ja' ? '双方の行動を公開' : 'Both actions revealed'
   const impact = events.find(
     (event) => event.type === 'counter' || event.type === 'hit',
   )
   if (impact?.type === 'counter') {
-    const owner = impact.sourceId === localPlayerId ? 'あなた' : '相手'
-    return `${choices} — ${owner}のカウンター、${impact.damage}ダメージ！`
+    const owner = impact.sourceId === localPlayerId
+      ? locale === 'ja' ? 'あなた' : 'You'
+      : locale === 'ja' ? '相手' : 'Opponent'
+    return locale === 'ja' ? `${choices} — ${owner}のカウンター、${impact.damage}ダメージ！` : `${choices} — ${owner} countered for ${impact.damage} damage!`
   }
   if (impact?.type === 'hit') {
-    const owner = impact.sourceId === localPlayerId ? 'あなた' : '相手'
-    return `${choices} — ${owner}の攻撃、${impact.damage}ダメージ！`
+    const owner = impact.sourceId === localPlayerId
+      ? locale === 'ja' ? 'あなた' : 'You'
+      : locale === 'ja' ? '相手' : 'Opponent'
+    return locale === 'ja' ? `${choices} — ${owner}の攻撃、${impact.damage}ダメージ！` : `${choices} — ${owner} dealt ${impact.damage} damage!`
   }
-  return `${choices} — 防御が拮抗。`
+  return locale === 'ja' ? `${choices} — 防御が拮抗。` : `${choices} — Defenses are evenly matched.`
 }
 
 function randomCode(length: number): string {
@@ -861,37 +1445,62 @@ function getSessionPlayerId(): string {
   }
 }
 
-const traitLabels: Record<PetManifest['analysis']['traits'][number], string> = {
+const traitLabelsJa: Record<PetManifest['analysis']['traits'][number], string> = {
   swift: '俊敏', sturdy: '堅牢', arcane: '秘術', radiant: '発光', fierce: '獰猛', mysterious: '神秘', balanced: '均衡',
 }
 
-const elementLabels: Record<PetManifest['analysis']['element'], string> = {
+const traitLabelsEn: Record<PetManifest['analysis']['traits'][number], string> = {
+  swift: 'Swift', sturdy: 'Sturdy', arcane: 'Arcane', radiant: 'Radiant', fierce: 'Fierce', mysterious: 'Mysterious', balanced: 'Balanced',
+}
+
+const elementLabelsJa: Record<PetManifest['analysis']['element'], string> = {
   neutral: '無', fire: '炎', water: '水', wind: '風', earth: '地', light: '光', shadow: '影',
+}
+
+const elementLabelsEn: Record<PetManifest['analysis']['element'], string> = {
+  neutral: 'Neutral', fire: 'Fire', water: 'Water', wind: 'Wind', earth: 'Earth', light: 'Light', shadow: 'Shadow',
 }
 
 const elementColors: Record<PetManifest['analysis']['element'], string> = {
   neutral: '#d7d9e0', fire: '#ff7147', water: '#65cfff', wind: '#7ce9d3', earth: '#d8b06a', light: '#fff09a', shadow: '#b391ff',
 }
 
-function manifestToPetView(manifest: PetManifest, imageUrl: string): PetView {
+function manifestToPetView(manifest: PetManifest, imageUrl: string, locale: Locale): PetView {
   const { analysis, stats, features } = manifest
   const essence = analysis.essence
+  const traitLabels = locale === 'ja' ? traitLabelsJa : traitLabelsEn
+  const elementLabels = locale === 'ja' ? elementLabelsJa : elementLabelsEn
+  const element = elementLabels[analysis.element]
   return {
     id: 'player',
     name: analysis.name,
-    description: `${elementLabels[analysis.element]}属性の${analysis.species} · ${manifest.analysisSource === 'luna' ? 'Luna認識' : 'ローカル認識'}`,
+    description: locale === 'ja'
+      ? `${element}属性の${analysis.species} · ${manifest.analysisSource === 'luna' ? 'Luna認識' : 'ローカル認識'}`
+      : `${element} ${analysis.species} · ${manifest.analysisSource === 'luna' ? 'Luna analysis' : 'Local analysis'}`,
     imageUrl,
     traits: [
-      `${elementLabels[analysis.element]}属性`,
+      locale === 'ja' ? `${element}属性` : `${element} element`,
       ...analysis.traits.map((trait) => traitLabels[trait]),
-      `物理ESS ${essence.physical}`,
-      `魔法ESS ${essence.magic}`,
-      `防御ESS ${essence.defense}`,
+      `${translate(locale, 'physical')} ESS ${essence.physical}`,
+      `${translate(locale, 'magic')} ESS ${essence.magic}`,
+      `${translate(locale, 'defense')} ESS ${essence.defense}`,
     ],
-    lockedTraits: features.entropy > 600 ? ['高次構造', '動的表現'] : ['意味関係', 'ベクター構造'],
+    lockedTraits: locale === 'ja'
+      ? features.entropy > 600 ? ['高次構造', '動的表現'] : ['意味関係', 'ベクター構造']
+      : features.entropy > 600 ? ['Higher-order structure', 'Dynamic expression'] : ['Semantic relations', 'Vector structure'],
     stats: { ...stats, essence: essence.physical + essence.magic + essence.defense },
     accentColor: elementColors[analysis.element],
   }
+}
+
+function levelUnlockLabel(level: number, locale: Locale): string {
+  const keys = ['unlockRaster', 'unlockSvg', 'unlockCode', 'unlock3d', 'unlockStructure'] as const
+  return translate(locale, keys[Math.max(1, Math.min(5, level)) - 1])
+}
+
+function levelLearningLabel(level: number, locale: Locale): string {
+  const keys = ['learnRaster', 'learnSvg', 'learnCode', 'learn3d', 'learnStructure'] as const
+  return translate(locale, keys[Math.max(1, Math.min(5, level)) - 1])
 }
 
 export default App
