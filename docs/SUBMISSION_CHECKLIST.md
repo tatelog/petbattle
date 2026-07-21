@@ -35,4 +35,3 @@ Deadline: July 21, 2026 at 5:00 PM Pacific Time (July 22 at 9:00 AM Japan time).
 - [ ] Devpost video link opens publicly without authentication.
 - [ ] Description does not claim Level 3+ formats are implemented; they are labeled as future work.
 - [ ] The demo does not contain copyrighted music, third-party trademarks, secrets, personal data, or API keys.
-

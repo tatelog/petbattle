@@ -36,4 +36,3 @@ PETBATTLE: understand what you made, learn a new way to express it, and bring it
 | 1:25–1:40 | GPT-5.6 and deterministic architecture |
 | 1:40–1:54 | Codex contribution |
 | 1:54–2:03 | Public URL, repository, and closing line |
-
