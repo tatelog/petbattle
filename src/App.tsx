@@ -22,6 +22,26 @@ import {
   type BattleEvent,
   type BattleState,
 } from './core/battle'
+import {
+  LEVEL_PROFILES,
+  awardBattleResult,
+  completeEvolutionQuest,
+  createInitialProgress,
+  levelForXp,
+  nextLevelProfile,
+  parseStoredProgress,
+  profileForLevel,
+  xpProgress,
+  type BattleReward,
+  type PlayerProgress,
+} from './core/progression'
+import {
+  buildSvgModel,
+  evolutionFocusLabel,
+  validateSvgText,
+  type EvolutionFocus,
+  type SvgModelArtifact,
+} from './core/evolution'
 import './App.css'
 
 type AppPhase = 'summon' | 'battle'
@@ -61,6 +81,23 @@ const battleWorkerUrl = (
 ).trim()
 const onlineConfigured = battleWorkerUrl.length > 0
 const lunaConfigured = lunaWorkerConfigured()
+const PROGRESS_STORAGE_KEY = 'petbattle-player-progress-v1'
+
+function loadPlayerProgress(): PlayerProgress {
+  if (import.meta.env.DEV) {
+    const qa = new URLSearchParams(window.location.search).get('qa')
+    if (qa === 'level1') return createInitialProgress()
+    if (qa === 'level2') {
+      return { ...createInitialProgress(), xp: profileForLevel(2).minXp, battles: 4, wins: 4, streak: 4, bestStreak: 4 }
+    }
+  }
+  try {
+    const stored = localStorage.getItem(PROGRESS_STORAGE_KEY)
+    return stored ? parseStoredProgress(JSON.parse(stored)) : createInitialProgress()
+  } catch {
+    return createInitialProgress()
+  }
+}
 
 const demoLeft: PetView = {
   id: 'player',
@@ -113,11 +150,24 @@ function App() {
   const [onlineOpponentId, setOnlineOpponentId] = useState<string | null>(null)
   const [onlineActionPending, setOnlineActionPending] = useState(false)
   const [isArenaFullscreen, setIsArenaFullscreen] = useState(false)
+  const [progress, setProgress] = useState<PlayerProgress>(loadPlayerProgress)
+  const [lastReward, setLastReward] = useState<BattleReward | null>(null)
+  const [evolutionTheme, setEvolutionTheme] = useState('守護する狐')
+  const [evolutionFocus, setEvolutionFocus] = useState<EvolutionFocus>('silhouette')
+  const [evolutionPrimary, setEvolutionPrimary] = useState('#D96B45')
+  const [evolutionAccent, setEvolutionAccent] = useState('#69E7FF')
+  const [evolutionReflection, setEvolutionReflection] = useState('')
+  const [evolutionArtifact, setEvolutionArtifact] = useState<SvgModelArtifact | null>(null)
+  const [evolutionNotice, setEvolutionNotice] = useState('テーマを決めると、制作を4段階へ分解します。')
+  const [evolutionError, setEvolutionError] = useState<string | null>(null)
   const arenaPanelRef = useRef<HTMLElement | null>(null)
   const roomConnectionRef = useRef<RoomConnection | null>(null)
   const roomCleanupRef = useRef<(() => void) | null>(null)
   const onlineBattleStartedRef = useRef(false)
   const koTimerRef = useRef<number | null>(null)
+  const battleActionsRef = useRef<BattleAction[]>([])
+  const rewardedBattleRef = useRef<string | null>(null)
+  const restoredArtifactRef = useRef(false)
 
   const reducedMotion = useMemo(
     () => {
@@ -128,10 +178,40 @@ function App() {
     },
     [],
   )
+  const coreLevel = levelForXp(progress.xp)
+  const coreProfile = profileForLevel(coreLevel)
+  const nextCoreProfile = nextLevelProfile(coreLevel)
+  const coreXp = xpProgress(progress)
 
   useEffect(() => () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
   }, [previewUrl])
+
+  useEffect(() => {
+    if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('qa')) return
+    try {
+      localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(progress))
+    } catch {
+      // Storageを利用できない環境でも現在のセッションは継続する。
+    }
+  }, [progress])
+
+  useEffect(() => {
+    if (restoredArtifactRef.current) return
+    restoredArtifactRef.current = true
+    const savedArtifact = progress.portfolio.find((entry) => entry.artifact)?.artifact
+    if (!savedArtifact || !savedArtifact.dataUrl.startsWith('data:image/svg+xml')) return
+    setLeftPet({
+      id: 'player',
+      name: savedArtifact.name,
+      description: '学習ポートフォリオから復元した進化Artifact',
+      imageUrl: savedArtifact.dataUrl,
+      traits: [...savedArtifact.traits, 'Portfolio復元'],
+      lockedTraits: ['Effect Recipe · Lv.3', '3D Projection · Lv.4'],
+      stats: savedArtifact.stats,
+      accentColor: savedArtifact.accentColor,
+    })
+  }, [progress])
 
   useEffect(() => () => {
     roomCleanupRef.current?.()
@@ -173,14 +253,59 @@ function App() {
       }
     : rightPet
 
-  function chooseFile(file: File | undefined) {
+  useEffect(() => {
+    if (!showResult || battle.status !== 'finished') return
+    const rewardKey = `${introKey}:${battle.turn}:${battle.winnerId ?? 'draw'}`
+    if (rewardedBattleRef.current === rewardKey) return
+    rewardedBattleRef.current = rewardKey
+    const outcome = battle.winnerId === null
+      ? 'draw'
+      : battle.winnerId === localCombatantId
+        ? 'win'
+        : 'loss'
+    const reward = awardBattleResult(progress, outcome, battleActionsRef.current)
+    setProgress(reward.progress)
+    setLastReward(reward)
+  }, [battle.status, battle.turn, battle.winnerId, introKey, localCombatantId, progress, showResult])
+
+  async function chooseFile(file: File | undefined) {
     if (!file) return
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setError('Lv.1で召喚できる形式はJPEG・PNG・WebPです。')
+    const isSvg = file.type.toLowerCase() === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg')
+    if (isSvg) {
+      if (coreLevel < 2) {
+        setError('SVGはCore Level 2で解放されます。バトルXPを蓄積してください。')
+        return
+      }
+      if (file.size > coreProfile.maxBytes) {
+        setError(`Lv.${coreLevel}のファイル上限は${Math.round(coreProfile.maxBytes / 1024 / 1024)} MiBです。`)
+        return
+      }
+      try {
+        const svg = validateSvgText(await file.text())
+        const nextUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+        if (previewUrl) URL.revokeObjectURL(previewUrl)
+        setSelectedFile(null)
+        setPreviewUrl(null)
+        setLeftPet((current) => ({
+          ...current,
+          name: file.name.replace(/\.svg$/i, '') || 'SVG Artifact',
+          description: '安全なSVG構造を検証したベクターArtifact',
+          imageUrl: nextUrl,
+          traits: ['SVG', 'ベクター', '構造検証済み', ...current.traits.slice(0, 3)],
+        }))
+        setError(null)
+        setMessage('SVGをローカル検証して召喚しました。外部画像や実行可能要素は含まれていません。')
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'SVGを検証できませんでした。')
+      }
       return
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setError('Lv.1のファイル上限は2 MiBです。')
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError(`Lv.${coreLevel}で召喚できる形式ではありません。`)
+      return
+    }
+    if (file.size > coreProfile.maxBytes) {
+      setError(`Lv.${coreLevel}のファイル上限は${Math.round(coreProfile.maxBytes / 1024 / 1024)} MiBです。`)
       return
     }
     if (previewUrl) URL.revokeObjectURL(previewUrl)
@@ -240,6 +365,9 @@ function App() {
     setIntroDone(false)
     setShowResult(false)
     setBattleLog(log)
+    setLastReward(null)
+    battleActionsRef.current = []
+    rewardedBattleRef.current = null
     setIntroKey((key) => key + 1)
     setPhase('battle')
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -487,6 +615,7 @@ function App() {
       ) return
       try {
         roomConnectionRef.current.action(playerAction)
+        battleActionsRef.current = [...battleActionsRef.current, playerAction]
         setOnlineActionPending(true)
         setOnlineStatus('action-locked')
         setBattleLog(`${actionName(playerAction)}を秘密状態で送信中…`)
@@ -497,6 +626,7 @@ function App() {
       }
       return
     }
+    battleActionsRef.current = [...battleActionsRef.current, playerAction]
     const cpuAction = actions[(battle.turn * 7 + battle.seed) % actions.length]
     const result = resolveTurn(battle, {
       [leftPet.id]: playerAction,
@@ -531,6 +661,90 @@ function App() {
     }
   }
 
+  function prepareEvolutionArtifact() {
+    if (coreLevel < 2) {
+      setEvolutionError(`SVG Evolution Questはあと${Math.max(0, profileForLevel(2).minXp - progress.xp)} XPで解放されます。`)
+      return
+    }
+    try {
+      const artifact = buildSvgModel({
+        theme: evolutionTheme,
+        focus: evolutionFocus,
+        primaryColor: evolutionPrimary,
+        accentColor: evolutionAccent,
+      })
+      setEvolutionArtifact(artifact)
+      setEvolutionError(null)
+      setEvolutionNotice('助言を確認し、構造と見た目を比較してください。完成理由を言葉にすると進化を記録できます。')
+    } catch (cause) {
+      setEvolutionError(cause instanceof Error ? cause.message : 'SVGモデルを構築できませんでした。')
+    }
+  }
+
+  function completeEvolutionArtifact() {
+    if (!evolutionArtifact) {
+      setEvolutionError('先にSVGモデルを構築してください。')
+      return
+    }
+    const reflection = evolutionReflection.trim()
+    if (reflection.length < 8) {
+      setEvolutionError('何をどう作ったかを8文字以上で振り返ってください。')
+      return
+    }
+    const focusBonus = evolutionFocus === 'silhouette'
+      ? { physical: 8, magic: 2, defense: 3 }
+      : evolutionFocus === 'layers'
+        ? { physical: 2, magic: 3, defense: 8 }
+        : { physical: 3, magic: 8, defense: 2 }
+    const firstCompletion = !progress.completedQuestIds.includes(evolutionArtifact.questId)
+    const evolvedStats = firstCompletion ? {
+      hp: leftPet.stats.hp + 10,
+      physical: leftPet.stats.physical + focusBonus.physical,
+      magic: leftPet.stats.magic + focusBonus.magic,
+      defense: leftPet.stats.defense + focusBonus.defense,
+      essence: Math.max(leftPet.stats.essence, 32),
+    } : leftPet.stats
+    const completion = completeEvolutionQuest(progress, {
+      id: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `artifact-${Date.now()}`,
+      questId: evolutionArtifact.questId,
+      theme: evolutionTheme.trim(),
+      format: 'SVG',
+      focus: evolutionFocusLabel(evolutionFocus),
+      reflection,
+      createdAt: new Date().toISOString(),
+      artifact: {
+        name: evolutionArtifact.name,
+        dataUrl: evolutionArtifact.dataUrl,
+        accentColor: evolutionAccent,
+        traits: [...evolutionArtifact.traits, '学習Evidence'],
+        stats: evolvedStats,
+      },
+    })
+    setProgress(completion.progress)
+    setLeftPet({
+      ...leftPet,
+      name: evolutionArtifact.name,
+      description: `${evolutionTheme.trim()}を基本図形とパスだけで構築したSVGモデル`,
+      imageUrl: evolutionArtifact.dataUrl,
+      traits: [...evolutionArtifact.traits, '学習Evidence'],
+      lockedTraits: ['Effect Recipe · Lv.3', '3D Projection · Lv.4'],
+      stats: evolvedStats,
+      accentColor: evolutionAccent,
+    })
+    setEvolutionError(null)
+    setEvolutionNotice(completion.xpGained > 0
+      ? `SVG Questを修了し、学習ポートフォリオへ保存しました。+${completion.xpGained} XP`
+      : '同じQuestのモデルを更新しました。XPは初回修了時だけ獲得します。')
+    setMessage('進化したSVGモデルを次のバトルへ召喚できます。')
+  }
+
+  function openEvolutionLab() {
+    backToLab()
+    window.setTimeout(() => {
+      document.getElementById('evolution-lab')?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' })
+    }, 60)
+  }
+
   function backToLab() {
     if (battleMode === 'online') {
       disconnectOnline(true)
@@ -544,7 +758,7 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const activeStep = phase === 'summon' ? 1 : showResult ? 4 : 3
+  const activeStep = phase === 'summon' ? (progress.portfolio.length > 0 ? 4 : 1) : showResult ? 4 : 3
 
   return (
     <div className="app-shell">
@@ -576,20 +790,26 @@ function App() {
         </div>
 
         {phase === 'summon' ? (
+          <>
           <section className="panel summon-panel">
             <div className="panel-heading">
-              <div><h2>召喚ラボ</h2><p>Lv.1はJPEG・PNG・WebP、2 MiB、16エッセンスまで。</p></div>
+              <div><h2>召喚ラボ</h2><p>Lv.{coreLevel} · {coreProfile.maxBytes / 1024 / 1024} MiB · Core容量 {coreProfile.essenceCapacity}</p></div>
               <div className="runtime-badges">
                 <div className={`runtime-pill ${lunaConfigured ? 'connected' : 'local'}`}>
                   <i aria-hidden="true" />
                   {lunaConfigured ? 'LOCAL + LUNA' : 'API不要 · LOCAL MODE'}
                 </div>
-                <div className="level-pill">CORE LEVEL 1</div>
+                <div className="level-pill">CORE LEVEL {coreLevel}</div>
               </div>
             </div>
             <div className="summon-grid">
-              <PetCard pet={leftPet} role="YOUR ARTIFACT" onFile={chooseFile} />
-              <PetCoreVisualizer pet={leftPet} />
+              <PetCard
+                pet={leftPet}
+                role="YOUR ARTIFACT"
+                accept={coreLevel >= 2 ? 'image/jpeg,image/png,image/webp,image/svg+xml,.svg' : 'image/jpeg,image/png,image/webp'}
+                onFile={chooseFile}
+              />
+              <PetCoreVisualizer pet={leftPet} level={coreLevel} essenceCapacity={coreProfile.essenceCapacity} />
             </div>
             <button className="secondary-button" type="button" onClick={analyzeSelected} disabled={isAnalyzing} style={{ marginTop: 18 }}>
               {isAnalyzing ? '意味を解析中…' : lunaConfigured ? '意味を解析' : 'ローカルで意味を解析'}
@@ -679,6 +899,30 @@ function App() {
             )}
             <div className={`status-message ${error ? 'error' : ''}`}>{error ?? message}</div>
           </section>
+          <ProgressionPanel
+            progress={progress}
+            level={coreLevel}
+            xpCurrent={coreXp.current}
+            xpRequired={coreXp.required}
+            xpRatio={coreXp.ratio}
+            nextUnlock={nextCoreProfile?.unlockLabel ?? 'すべて解放済み'}
+            theme={evolutionTheme}
+            focus={evolutionFocus}
+            primaryColor={evolutionPrimary}
+            accentColor={evolutionAccent}
+            reflection={evolutionReflection}
+            artifact={evolutionArtifact}
+            notice={evolutionNotice}
+            error={evolutionError}
+            onThemeChange={setEvolutionTheme}
+            onFocusChange={setEvolutionFocus}
+            onPrimaryChange={setEvolutionPrimary}
+            onAccentChange={setEvolutionAccent}
+            onReflectionChange={setEvolutionReflection}
+            onBuild={prepareEvolutionArtifact}
+            onComplete={completeEvolutionArtifact}
+          />
+          </>
         ) : (
           <section ref={arenaPanelRef} className={`panel arena-panel ${isArenaFullscreen ? 'is-fullscreen' : ''}`}>
             <div className="arena-stage">
@@ -740,9 +984,21 @@ function App() {
               <div className="result-card">
                 <div className="trophy">🏆</div>
                 <h2>{battle.winnerId === localCombatantId ? `${leftPet.name} WIN` : battle.winnerId === rightCombatant.id ? `${displayedRightPet.name} WIN` : 'DRAW'}</h2>
-                <p>バトル経験値を獲得しました。Lv.2ではCore容量が32へ増え、SVGと未解放エッセンスが利用できます。</p>
+                {lastReward ? (
+                  <>
+                    <div className="result-xp-line"><strong>+{lastReward.xpGained} XP</strong><span>行動バリエーション +{lastReward.varietyBonus}</span></div>
+                    <div className="result-level-line"><span>CORE LEVEL {lastReward.currentLevel}</span><b>{xpProgress(lastReward.progress).current} / {xpProgress(lastReward.progress).required || 'MAX'} XP</b></div>
+                    <div className="result-xp-track"><i style={{ width: `${xpProgress(lastReward.progress).ratio * 100}%` }} /></div>
+                    <p>{lastReward.leveledUp
+                      ? `CORE LEVEL ${lastReward.currentLevel}へ進化。${profileForLevel(lastReward.currentLevel).unlockLabel}が解放されました。`
+                      : nextLevelProfile(lastReward.currentLevel)
+                        ? `次の解放まであと${nextLevelProfile(lastReward.currentLevel)!.minXp - lastReward.progress.xp} XP。複数試合の経験と制作課題で成長します。`
+                        : 'すべてのCore Levelを解放しています。'}</p>
+                  </>
+                ) : <p>バトル結果と習熟度を集計しています…</p>}
                 <div className="result-actions">
                   <button type="button" className="secondary-button" onClick={backToLab}>召喚ラボへ</button>
+                  {coreLevel >= 2 && <button type="button" className="secondary-button" onClick={openEvolutionLab}>進化ラボへ</button>}
                   {battleMode === 'local' && <button type="button" className="secondary-button" onClick={startLocalBattle}>再戦</button>}
                 </div>
               </div>
@@ -755,14 +1011,150 @@ function App() {
   )
 }
 
+function ProgressionPanel({
+  progress,
+  level,
+  xpCurrent,
+  xpRequired,
+  xpRatio,
+  nextUnlock,
+  theme,
+  focus,
+  primaryColor,
+  accentColor,
+  reflection,
+  artifact,
+  notice,
+  error,
+  onThemeChange,
+  onFocusChange,
+  onPrimaryChange,
+  onAccentChange,
+  onReflectionChange,
+  onBuild,
+  onComplete,
+}: {
+  progress: PlayerProgress
+  level: number
+  xpCurrent: number
+  xpRequired: number
+  xpRatio: number
+  nextUnlock: string
+  theme: string
+  focus: EvolutionFocus
+  primaryColor: string
+  accentColor: string
+  reflection: string
+  artifact: SvgModelArtifact | null
+  notice: string
+  error: string | null
+  onThemeChange: (value: string) => void
+  onFocusChange: (value: EvolutionFocus) => void
+  onPrimaryChange: (value: string) => void
+  onAccentChange: (value: string) => void
+  onReflectionChange: (value: string) => void
+  onBuild: () => void
+  onComplete: () => void
+}) {
+  const svgUnlockXp = profileForLevel(2).minXp
+  const svgUnlocked = level >= 2
+  return (
+    <section id="evolution-lab" className="panel progression-panel">
+      <div className="progression-heading">
+        <div><span>CORE JOURNEY</span><h2>育成・進化ラボ</h2><p>勝敗だけでなく、行動の使い分けと制作課題を学習履歴として蓄積します。</p></div>
+        <div className="progression-level">LV.{level}</div>
+      </div>
+
+      <div className="progression-summary">
+        <div className="xp-card">
+          <div><span>CORE EXPERIENCE</span><strong>{progress.xp} XP</strong></div>
+          <div className="xp-track" aria-label={`レベル経験値 ${xpCurrent} / ${xpRequired || 'MAX'}`}><i style={{ width: `${xpRatio * 100}%` }} /></div>
+          <small>{xpRequired > 0 ? `次の「${nextUnlock}」まであと${xpRequired - xpCurrent} XP` : '全Core Level解放済み'}</small>
+        </div>
+        <div className="career-stats">
+          <div><span>BATTLES</span><strong>{progress.battles}</strong></div>
+          <div><span>WINS</span><strong>{progress.wins}</strong></div>
+          <div><span>STREAK</span><strong>{progress.streak}</strong></div>
+          <div><span>QUESTS</span><strong>{progress.completedQuestIds.length}</strong></div>
+        </div>
+      </div>
+
+      <div className="mastery-row" aria-label="行動習熟度">
+        <span>物理習熟 {progress.mastery.physical}</span>
+        <span>魔法習熟 {progress.mastery.magic}</span>
+        <span>防御習熟 {progress.mastery.defense}</span>
+      </div>
+
+      <div className="level-roadmap" aria-label="Core Levelロードマップ">
+        {LEVEL_PROFILES.map((profile) => (
+          <article key={profile.level} className={profile.level === level ? 'current' : profile.level < level ? 'unlocked' : 'locked'}>
+            <div><b>LV.{profile.level}</b><span>{profile.minXp} XP</span></div>
+            <strong>{profile.unlockLabel}</strong>
+            <small>{profile.formats.join(' / ')} · {profile.essenceCapacity} ESS</small>
+            <p>{profile.learningTheme}</p>
+          </article>
+        ))}
+      </div>
+
+      <div className={`evolution-quest ${svgUnlocked ? 'unlocked' : 'locked'}`}>
+        <div className="quest-heading">
+          <div><span>EVOLUTION QUEST 01 · SVG</span><h3>元画像なしベクターモデル</h3></div>
+          <div className="quest-state">{svgUnlocked ? 'UNLOCKED' : `${Math.max(0, svgUnlockXp - progress.xp)} XP TO UNLOCK`}</div>
+        </div>
+        {!svgUnlocked ? (
+          <div className="quest-locked-copy">
+            <strong>4勝前後でCore Level 2へ</strong>
+            <p>解放後は「狐」「フクロウ」「海亀」などのテーマを自分で指定し、観察→分解→構築→検証の助言に沿ってSVGモデルを作れます。</p>
+          </div>
+        ) : (
+          <div className="quest-workspace">
+            <div className="quest-form">
+              <label><span>1. 制作テーマ（動物など）</span><input list="theme-examples" value={theme} maxLength={30} onChange={(event) => onThemeChange(event.target.value)} /></label>
+              <datalist id="theme-examples"><option value="守護する狐" /><option value="星空のフクロウ" /><option value="深海の海亀" /><option value="雷をまとう狼" /></datalist>
+              <label><span>2. 学ぶ焦点</span><select value={focus} onChange={(event) => onFocusChange(event.target.value as EvolutionFocus)}><option value="silhouette">シルエット</option><option value="layers">レイヤー</option><option value="symbol">象徴表現</option></select></label>
+              <div className="color-fields">
+                <label><span>主色</span><input type="color" value={primaryColor} onChange={(event) => onPrimaryChange(event.target.value)} /></label>
+                <label><span>発光色</span><input type="color" value={accentColor} onChange={(event) => onAccentChange(event.target.value)} /></label>
+              </div>
+              <button type="button" className="secondary-button" onClick={onBuild}>助言を生成してSVGモデルを構築</button>
+            </div>
+            <div className="quest-output">
+              {artifact ? (
+                <>
+                  <div className="svg-preview"><img src={artifact.dataUrl} alt={`${theme}のSVGモデルプレビュー`} /></div>
+                  <div className="advice-grid">
+                    <div><span>OBSERVE</span><p>{artifact.advice.observation}</p></div>
+                    <div><span>DECOMPOSE</span><p>{artifact.advice.decomposition}</p></div>
+                    <div><span>BUILD</span><p>{artifact.advice.construction}</p></div>
+                    <div><span>VERIFY</span><p>{artifact.advice.validation}</p></div>
+                  </div>
+                  <label className="reflection-field"><span>3. 何をどう作ったか</span><textarea value={reflection} rows={3} placeholder="例：耳と尾を三角形と曲線へ分け、縮小しても狐に見えるよう調整した" onChange={(event) => onReflectionChange(event.target.value)} /></label>
+                  <button type="button" className="primary-button quest-complete" onClick={onComplete}>学習Evidenceとして保存しPETを進化</button>
+                </>
+              ) : <div className="quest-placeholder"><span>NO SOURCE IMAGE</span><strong>テーマから構造を考える</strong><p>左の条件を決めると、外部画像を参照しないSVGを構築します。</p></div>}
+            </div>
+          </div>
+        )}
+        <div className={`quest-notice ${error ? 'error' : ''}`} aria-live="polite">{error ?? notice}</div>
+      </div>
+
+      {progress.portfolio.length > 0 && (
+        <div className="portfolio-list"><h3>学習ポートフォリオ</h3>{progress.portfolio.slice(0, 4).map((entry) => <article key={entry.id}><div><strong>{entry.theme}</strong><span>{entry.format} · {entry.focus}</span></div><p>{entry.reflection}</p></article>)}</div>
+      )}
+    </section>
+  )
+}
+
 function PetCard({
   pet,
   role,
+  accept = 'image/jpeg,image/png,image/webp',
   onFile,
 }: {
   pet: PetView
   role: string
-  onFile?: (file: File | undefined) => void
+  accept?: string
+  onFile?: (file: File | undefined) => void | Promise<void>
 }) {
   return (
     <article className="pet-card">
@@ -780,13 +1172,13 @@ function PetCard({
       </div>
       <div className="pet-card-content">
         <div className="pet-role">{role}</div><h3>{pet.name}</h3><p>{pet.description}</p>
-        {onFile && <label className="upload-button">画像を選ぶ<input className="file-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onFile(event.target.files?.[0])} /></label>}
+        {onFile && <label className="upload-button">Artifactを選ぶ<input className="file-input" type="file" accept={accept} onChange={(event) => { void onFile(event.target.files?.[0]) }} /></label>}
       </div>
     </article>
   )
 }
 
-function PetCoreVisualizer({ pet }: { pet: PetView }) {
+function PetCoreVisualizer({ pet, level, essenceCapacity }: { pet: PetView; level: number; essenceCapacity: number }) {
   const center = { x: 120, y: 116 }
   const axes = {
     physical: { x: 120, y: 22 },
@@ -807,7 +1199,7 @@ function PetCoreVisualizer({ pet }: { pet: PetView }) {
     <article className="core-visualizer" aria-label="自分のPET Core能力値">
       <div className="core-visualizer-heading">
         <div><span>PET CORE SCAN</span><h3>パラメータ解析</h3></div>
-        <div className="core-level-indicator"><i /> LEVEL 1</div>
+        <div className="core-level-indicator"><i /> LEVEL {level}</div>
       </div>
       <div className="core-visualizer-grid">
         <div className="core-radar-wrap">
@@ -829,7 +1221,7 @@ function PetCoreVisualizer({ pet }: { pet: PetView }) {
             <text className="core-radar-label physical" x="120" y="15" textAnchor="middle">物理</text>
             <text className="core-radar-label magic" x="224" y="202" textAnchor="end">魔法</text>
             <text className="core-radar-label defense" x="16" y="202">防御</text>
-            <text className="core-radar-essence" x="120" y="116" textAnchor="middle">ESS {pet.stats.essence}/16</text>
+            <text className="core-radar-essence" x="120" y="116" textAnchor="middle">ESS {pet.stats.essence}/{essenceCapacity}</text>
           </svg>
         </div>
         <div className="core-meter-list">
@@ -840,7 +1232,7 @@ function PetCoreVisualizer({ pet }: { pet: PetView }) {
       </div>
       <div className="essence-list">
         {pet.traits.map((trait) => <span className="essence-tag" key={trait}>{trait}</span>)}
-        {pet.lockedTraits.map((trait) => <span className="essence-tag locked" key={trait}>🔒 {trait} · Lv.2</span>)}
+        {pet.lockedTraits.map((trait) => <span className="essence-tag locked" key={trait}>🔒 {trait.includes('Lv.') ? trait : `${trait} · Lv.${Math.max(2, level + 1)}`}</span>)}
       </div>
     </article>
   )
