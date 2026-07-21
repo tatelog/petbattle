@@ -18,6 +18,19 @@
   --danger: #ff6d69;
 }
 
+html[data-theme='dark'] { color-scheme: dark; }
+
+html[data-theme='light'] {
+  color-scheme: light;
+  color: #172333;
+  background: #edf3f8;
+  --bg: #edf3f8;
+  --surface: rgba(255, 255, 255, 0.91);
+  --surface-soft: rgba(20, 40, 60, 0.055);
+  --line: rgba(25, 48, 70, 0.16);
+  --muted: #667586;
+}
+
 * { box-sizing: border-box; }
 
 html { background: var(--bg); scroll-behavior: smooth; }

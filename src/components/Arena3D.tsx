@@ -65,6 +65,7 @@ export interface Arena3DProps {
   introKey?: string | number
   showSkipButton?: boolean
   skipLabel?: string
+  ariaLabel?: string
   onSkipIntro?: () => void
   onIntroComplete?: () => void
   reducedMotion?: boolean
@@ -1027,6 +1028,7 @@ export function Arena3D({
   introKey = 0,
   showSkipButton = true,
   skipLabel = 'イントロをスキップ',
+  ariaLabel = 'PETBATTLE 3Dバトルコロシアム',
   onSkipIntro,
   onIntroComplete,
   reducedMotion,
@@ -1082,7 +1084,7 @@ export function Arena3D({
   const classes = ['arena3d', className].filter(Boolean).join(' ')
 
   return (
-    <section className={classes} aria-label="PETBATTLE 3Dバトルコロシアム">
+    <section className={classes} aria-label={ariaLabel}>
       <Canvas
         className="arena3d__canvas"
         camera={{

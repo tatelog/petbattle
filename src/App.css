@@ -35,6 +35,13 @@
   border-radius: 999px; padding: 7px 11px; font-size: 11px; letter-spacing: .1em;
   background: rgba(247,188,82,.07);
 }
+.header-actions { display: flex; align-items: center; justify-content: end; gap: 8px; }
+.display-toggle,.locale-toggle { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-soft); }
+.display-toggle { gap: 6px; min-height: 32px; padding: 0 11px; color: inherit; font: 800 9px/1 ui-monospace,monospace; letter-spacing: .1em; }
+.display-toggle span { color: var(--gold); font-size: 13px; }
+.locale-toggle { padding: 3px; }
+.locale-toggle button { min-width: 34px; min-height: 26px; border: 0; border-radius: 999px; color: var(--muted); background: transparent; font: 800 9px/1 ui-monospace,monospace; letter-spacing: .08em; }
+.locale-toggle button.active { color: #071015; background: var(--cyan); box-shadow: 0 4px 14px rgba(105,231,255,.2); }
 
 .app-main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 52px 0 84px; }
 .hero-copy { text-align: center; max-width: 840px; margin: 0 auto 34px; }
@@ -298,9 +305,48 @@
 
 .footer-note { text-align: center; color: var(--muted); font-size: 11px; margin-top: 25px; }
 
+html[data-theme='light'] .app-shell {
+  background:
+    radial-gradient(circle at 15% 10%, rgba(20,175,205,.14), transparent 25rem),
+    radial-gradient(circle at 88% 32%, rgba(184,72,201,.1), transparent 29rem),
+    linear-gradient(180deg,#f8fbfd 0%,#eaf1f6 68%,#e5edf3 100%);
+}
+html[data-theme='light'] .panel { box-shadow: 0 24px 70px rgba(38,64,85,.14); }
+html[data-theme='light'] .hero-copy h1 span { background-image: linear-gradient(90deg,#058aa4,#21384b,#a23bb1); }
+html[data-theme='light'] .runtime-pill { color: #14744f; background: rgba(25,155,102,.08); border-color: rgba(25,155,102,.24); }
+html[data-theme='light'] .runtime-pill.connected { color: #0b7088; background: rgba(20,175,205,.08); }
+html[data-theme='light'] .level-pill { color: #8b5c00; }
+html[data-theme='light'] .progression-level { color: #8b5c00; }
+html[data-theme='light'] .xp-card strong { color: #164a59; }
+html[data-theme='light'] .career-stats > div,
+html[data-theme='light'] .mastery-row span,
+html[data-theme='light'] .level-roadmap article { background: rgba(36,67,90,.035); }
+html[data-theme='light'] .secondary-button { color: #172333; background: rgba(25,48,70,.07); }
+html[data-theme='light'] .room-fields input { color: #172333; background: rgba(25,48,70,.055); }
+html[data-theme='light'] .worker-notice code { color: #805900; }
+html[data-theme='light'] .core-visualizer,
+html[data-theme='light'] .pet-card,
+html[data-theme='light'] .evolution-quest,
+html[data-theme='light'] .arena-panel,
+html[data-theme='light'] .result-card,
+html[data-theme='light'] .connection-banner { color: #f8f6ef; }
+html[data-theme='light'] .core-visualizer .secondary-button,
+html[data-theme='light'] .pet-card .secondary-button,
+html[data-theme='light'] .evolution-quest .secondary-button,
+html[data-theme='light'] .arena-panel .secondary-button,
+html[data-theme='light'] .result-card .secondary-button { color: #fff; background: rgba(255,255,255,.09); }
+html[data-theme='light'] .evolution-quest { background: radial-gradient(circle at 72% 30%,rgba(240,109,255,.1),transparent 35%),#10131b; }
+html[data-theme='light'] .quest-form input:not([type='color']),
+html[data-theme='light'] .quest-form select,
+html[data-theme='light'] .reflection-field textarea { color: #fff; }
+html[data-theme='light'] .footer-note { color: #5a6b7d; }
+
 @media (max-width: 760px) {
   .site-header { min-height: 66px; }
   .build-badge { display: none; }
+  .header-actions { gap: 5px; }
+  .display-toggle { padding: 0 8px; font-size: 0; }
+  .display-toggle span { font-size: 14px; }
   .app-main { padding-top: 34px; }
   .summon-grid { grid-template-columns: 1fr; }
   .core-visualizer { min-height: 340px; }

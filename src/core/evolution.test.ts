@@ -9,6 +9,19 @@ describe('SVG Evolution Quest', () => {
     expect(advice.validation).toMatch(/外部画像/)
   })
 
+  it('英語UIでは制作助言とSVGメタデータも英語にする', () => {
+    const artifact = buildSvgModel({
+      theme: 'Guardian Fox',
+      focus: 'silhouette',
+      primaryColor: '#D97B42',
+      accentColor: '#69E7FF',
+      locale: 'en',
+    })
+    expect(artifact.advice.observation).toMatch(/Observe Guardian Fox/)
+    expect(artifact.svg).toContain('SVG vector model')
+    expect(artifact.traits).toContain('No source image')
+  })
+
   it('元画像を参照しない自己完結SVGを構築する', () => {
     const artifact = buildSvgModel({
       theme: '星空のフクロウ',

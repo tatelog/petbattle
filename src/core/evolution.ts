@@ -12,6 +12,7 @@ export interface SvgModelOptions {
   focus: EvolutionFocus
   primaryColor: string
   accentColor: string
+  locale?: 'ja' | 'en'
 }
 
 export interface SvgModelArtifact {
@@ -27,6 +28,12 @@ const focusLabels: Record<EvolutionFocus, string> = {
   silhouette: 'シルエット',
   layers: 'レイヤー',
   symbol: '象徴表現',
+}
+
+const focusLabelsEn: Record<EvolutionFocus, string> = {
+  silhouette: 'Silhouette',
+  layers: 'Layers',
+  symbol: 'Symbolism',
 }
 
 function escapeXml(value: string): string {
@@ -60,9 +67,31 @@ function archetype(theme: string): 'fox' | 'owl' | 'turtle' | 'wolf' | 'custom' 
   return 'custom'
 }
 
-export function adviceForTheme(themeInput: string, focus: EvolutionFocus): EvolutionAdvice {
+export function adviceForTheme(themeInput: string, focus: EvolutionFocus, locale: 'ja' | 'en' = 'ja'): EvolutionAdvice {
   const theme = normalizedTheme(themeInput)
   const kind = archetype(theme)
+  if (locale === 'en') {
+    const feature = kind === 'fox'
+      ? 'large triangular ears, a narrow muzzle, and a long tail'
+      : kind === 'owl'
+        ? 'round eyes, wide wings, and a compact body'
+        : kind === 'turtle'
+          ? 'an oval shell, four limbs, and a projecting head'
+          : kind === 'wolf'
+            ? 'upright ears, a long muzzle, and a powerful chest'
+            : 'the outer contour, central mass, and one distinctive feature'
+    const focusGuide = focus === 'silhouette'
+      ? 'Before adding detail, make a contour that communicates the theme in one color.'
+      : focus === 'layers'
+        ? 'Separate background, body, features, and glow into four layers and manage their order.'
+        : 'Translate the theme into one emblem and place it as a reusable symbol.'
+    return {
+      observation: `Observe ${theme} and choose the three most recognizable elements from ${feature}.`,
+      decomposition: `Decompose it into circles, ellipses, triangles, and curves. ${focusGuide}`,
+      construction: 'Set a center line on a 720 × 720 viewBox, then build while checking coordinates, symmetry, and the role of each path.',
+      validation: 'Check the model at thumbnail size and in one color. Confirm the theme stays readable and no external image is referenced.',
+    }
+  }
   const feature = kind === 'fox'
     ? '大きな三角耳・細い鼻先・長い尾'
     : kind === 'owl'
@@ -95,6 +124,8 @@ export function buildSvgModel(options: SvgModelOptions): SvgModelArtifact {
   const primary = validColor(options.primaryColor)
   const accent = validColor(options.accentColor)
   const kind = archetype(theme)
+  const locale = options.locale ?? 'ja'
+  const labels = locale === 'ja' ? focusLabels : focusLabelsEn
   const safeTheme = escapeXml(theme)
   const ears = kind === 'turtle'
     ? ''
@@ -116,19 +147,25 @@ export function buildSvgModel(options: SvgModelOptions): SvgModelArtifact {
     : options.focus === 'layers'
       ? '<g fill="none" stroke="' + accent + '" stroke-width="8" opacity=".72"><circle cx="360" cy="360" r="252"/><circle cx="360" cy="360" r="284" stroke-dasharray="18 22"/></g>'
       : '<path d="m360 90 32 66 72 10-52 50 12 72-64-34-64 34 12-72-52-50 72-10Z" fill="' + accent + '" opacity=".38"/>'
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 720" role="img" aria-labelledby="title desc"><title id="title">${safeTheme}のSVGベクターモデル</title><desc id="desc">元画像を使わず基本図形とパスから構築した${focusLabels[options.focus]}課題</desc><defs><linearGradient id="body" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${primary}"/><stop offset="1" stop-color="${accent}"/></linearGradient><radialGradient id="core"><stop stop-color="${accent}" stop-opacity=".42"/><stop offset="1" stop-color="#050711" stop-opacity="0"/></radialGradient></defs><circle cx="360" cy="360" r="330" fill="url(#core)"/>${focusMotif}<g>${ears}${body}${face}</g><circle cx="360" cy="360" r="318" fill="none" stroke="${accent}" stroke-width="5" stroke-dasharray="8 18" opacity=".5"/></svg>`
+  const title = locale === 'ja' ? `${safeTheme}のSVGベクターモデル` : `${safeTheme} SVG vector model`
+  const description = locale === 'ja'
+    ? `元画像を使わず基本図形とパスから構築した${labels[options.focus]}課題`
+    : `${labels[options.focus]} exercise built from basic shapes and paths without a source image`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 720" role="img" aria-labelledby="title desc"><title id="title">${title}</title><desc id="desc">${description}</desc><defs><linearGradient id="body" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${primary}"/><stop offset="1" stop-color="${accent}"/></linearGradient><radialGradient id="core"><stop stop-color="${accent}" stop-opacity=".42"/><stop offset="1" stop-color="#050711" stop-opacity="0"/></radialGradient></defs><circle cx="360" cy="360" r="330" fill="url(#core)"/>${focusMotif}<g>${ears}${body}${face}</g><circle cx="360" cy="360" r="318" fill="none" stroke="${accent}" stroke-width="5" stroke-dasharray="8 18" opacity=".5"/></svg>`
   return {
     questId: questIdFor(theme, options.focus),
     name: `${theme} Vector Core`,
     svg,
     dataUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
-    advice: adviceForTheme(theme, options.focus),
-    traits: [theme, focusLabels[options.focus], 'ベクター', '元画像なし'],
+    advice: adviceForTheme(theme, options.focus, locale),
+    traits: locale === 'ja'
+      ? [theme, labels[options.focus], 'ベクター', '元画像なし']
+      : [theme, labels[options.focus], 'Vector', 'No source image'],
   }
 }
 
-export function evolutionFocusLabel(focus: EvolutionFocus): string {
-  return focusLabels[focus]
+export function evolutionFocusLabel(focus: EvolutionFocus, locale: 'ja' | 'en' = 'ja'): string {
+  return (locale === 'ja' ? focusLabels : focusLabelsEn)[focus]
 }
 
 export function validateSvgText(input: string): string {
