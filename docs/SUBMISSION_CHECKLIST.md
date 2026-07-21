@@ -12,12 +12,13 @@ Deadline: July 21, 2026 at 5:00 PM Pacific Time (July 22 at 9:00 AM Japan time).
 - [x] Judge testing path needs no account, API key, or test credentials.
 - [x] Automated tests, type check, lint, and production build pass.
 - [x] Public repository includes an MIT license.
-- [x] English narration and caption transcript prepared.
+- [x] New English narration, burned captions, chapter dividers, and uploadable SRT prepared.
 
 ## REQUIRED BEFORE SUBMIT
 
 - [ ] Run `/feedback` in the primary PETBATTLE Codex thread and copy the Session ID.
 - [ ] Review `public/demo/petbattle-submission-en.mp4` from beginning to end.
+- [ ] Optionally upload `public/demo/petbattle-submission-en.srt` as the YouTube English caption track.
 - [ ] Upload that video to YouTube as **Public** (not Unlisted or Private) and paste its URL into Devpost.
 - [ ] Confirm the YouTube video is under 3:00 and its audio clearly covers the product, Codex, and GPT-5.6.
 - [ ] Replace all three placeholders in `docs/DEVPOST_SUBMISSION.md`.

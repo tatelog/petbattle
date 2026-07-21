@@ -1,0 +1,211 @@
+1
+00:00:00,000 --> 00:00:02,626
+{\an2}What if every image could become a creature,
+and learning a new format
+
+2
+00:00:02,706 --> 00:00:05,332
+{\an2}made it stronger? This is PETBATTLE, an
+education game about
+
+3
+00:00:05,412 --> 00:00:08,038
+{\an2}understanding what you create.
+
+4
+00:00:09,318 --> 00:00:12,956
+{\an2}Starting from a clean Level One session, I
+switch to English and summon
+
+5
+00:00:13,036 --> 00:00:16,675
+{\an2}a visual creation through the magic circle.
+PETBATTLE turns visual
+
+6
+00:00:16,755 --> 00:00:20,393
+{\an2}meaning into a bounded set of essences, then
+shows only my own PET and
+
+7
+00:00:20,473 --> 00:00:24,111
+{\an2}its explainable Physical, Magic, Defense,
+and health parameters. File
+
+8
+00:00:24,191 --> 00:00:27,830
+{\an2}size, image resolution, and raw token usage
+never add battle power. The
+
+9
+00:00:27,910 --> 00:00:31,548
+{\an2}complete CPU loop works on GitHub Pages
+without an account or API key.
+
+10
+00:00:32,828 --> 00:00:36,561
+{\an8}The opponent stays sealed until I enter the
+colosseum. The camera
+
+11
+00:00:36,641 --> 00:00:40,375
+{\an8}spirals down from an aerial view, my PET
+arrives, and the rival is
+
+12
+00:00:40,455 --> 00:00:44,188
+{\an8}revealed only at battle start. Physical
+interrupts Magic. Magic pierces
+
+13
+00:00:44,268 --> 00:00:48,001
+{\an8}Defense. Defense counters Physical. The
+commands, health, effects, and
+
+14
+00:00:48,081 --> 00:00:51,814
+{\an8}result all stay inside one readable arena
+experience.
+
+15
+00:00:53,094 --> 00:00:55,951
+{\an2}A result records bounded experience and
+mastery for the actions I
+
+16
+00:00:56,031 --> 00:00:58,888
+{\an2}actually used. One match cannot maximize the
+PET. In this same clean
+
+17
+00:00:58,968 --> 00:01:01,825
+{\an2}browser session, repeated real battles
+reached one hundred ninety
+
+18
+00:01:01,905 --> 00:01:04,762
+{\an2}experience and unlocked Core Level Two. The
+roadmap connects each future
+
+19
+00:01:04,842 --> 00:01:07,699
+{\an2}format to a concrete learning theme instead
+of making it a cosmetic
+
+20
+00:01:07,779 --> 00:01:10,635
+{\an2}upgrade.
+
+21
+00:01:11,915 --> 00:01:15,386
+{\an2}Level Two opens a source-image-free SVG
+Evolution Quest. I choose a
+
+22
+00:01:15,466 --> 00:01:18,937
+{\an2}theme and a learning focus, then follow
+Observe, Decompose, Build, and
+
+23
+00:01:19,017 --> 00:01:22,488
+{\an2}Verify guidance. I explain why the model
+remains readable at thumbnail
+
+24
+00:01:22,568 --> 00:01:26,039
+{\an2}size, save the reflection as portfolio
+evidence, and evolve the PET. The
+
+25
+00:01:26,119 --> 00:01:29,590
+{\an2}unlock is not permission to upload a new
+extension. It is a guided
+
+26
+00:01:29,670 --> 00:01:33,141
+{\an2}reason to learn how that representation
+works.
+
+27
+00:01:34,421 --> 00:01:38,164
+{\an2}GPT-5.6 Luna is an optional semantic
+interpreter behind a Cloudflare
+
+28
+00:01:38,244 --> 00:01:41,988
+{\an2}Worker. It proposes a small structured
+description. Zod validates that
+
+29
+00:01:42,068 --> 00:01:45,811
+{\an2}response, and deterministic code calculates
+the stats. The OpenAI key
+
+30
+00:01:45,891 --> 00:01:49,634
+{\an2}never reaches the browser. When the model or
+Worker is absent, the local
+
+31
+00:01:49,714 --> 00:01:53,458
+{\an2}analyzer keeps the complete core game
+playable. AI helps read meaning,
+
+32
+00:01:53,538 --> 00:01:57,281
+{\an2}but it never becomes an opaque judge of
+student work.
+
+33
+00:01:58,561 --> 00:02:02,002
+{\an2}Codex was my primary engineering partner in
+the main build thread. I
+
+34
+00:02:02,082 --> 00:02:05,524
+{\an2}used it to redesign the unfinished concept,
+implement the Three.js arena
+
+35
+00:02:05,604 --> 00:02:09,045
+{\an2}and deterministic battle engine, create the
+secure AI boundary, add
+
+36
+00:02:09,125 --> 00:02:12,567
+{\an2}progression and the SVG learning quest,
+write tests, perform browser
+
+37
+00:02:12,647 --> 00:02:16,088
+{\an2}quality assurance, localize the interface,
+generate the submission
+
+38
+00:02:16,168 --> 00:02:19,610
+{\an2}media, and deploy the public app. I made the
+product decisions that keep
+
+39
+00:02:19,690 --> 00:02:23,131
+{\an2}it fair, explainable, and educational.
+
+40
+00:02:24,411 --> 00:02:28,404
+{\an2}Today PETBATTLE teaches raster and vector
+thinking. Next, the same loop
+
+41
+00:02:28,484 --> 00:02:32,477
+{\an2}can unlock code effects, 3D models, PDF, and
+IFC, each with its own
+
+42
+00:02:32,557 --> 00:02:36,550
+{\an2}validator, learning objective, and creative
+challenge. Understand what
+
+43
+00:02:36,630 --> 00:02:40,623
+{\an2}you made. Learn a new way to express it.
+Return to the arena.

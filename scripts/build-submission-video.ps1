@@ -8,17 +8,21 @@ Add-Type -AssemblyName System.Speech
 
 $demoDir = Join-Path $Root 'public\demo'
 $workDir = Join-Path $demoDir '.submission-video'
+$recordedDir = Join-Path $workDir 'recorded'
 $outputPath = Join-Path $demoDir 'petbattle-submission-en.mp4'
-$voicePath = Join-Path $workDir 'voiceover.wav'
+$captionPath = Join-Path $demoDir 'petbattle-submission-en.srt'
+$narrationPath = Join-Path $workDir 'narration.wav'
 $visualPath = Join-Path $workDir 'visuals.mp4'
+$dividerSeconds = 1.2
 New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 
-function New-Slide {
+function New-CinematicSlide {
   param(
     [string]$Path,
-    [string]$Eyebrow,
+    [string]$Kicker,
     [string]$Title,
     [string]$Body,
+    [string]$Number = '',
     [string]$Footer = 'tatelog.github.io/petbattle'
   )
 
@@ -26,119 +30,226 @@ function New-Slide {
   $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
   $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
   $graphics.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
-  $graphics.Clear([System.Drawing.Color]::FromArgb(7, 10, 16))
+  $bounds = New-Object System.Drawing.Rectangle 0, 0, 1280, 720
+  $gradient = New-Object System.Drawing.Drawing2D.LinearGradientBrush $bounds, ([System.Drawing.Color]::FromArgb(5, 9, 16)), ([System.Drawing.Color]::FromArgb(17, 31, 45)), 18
+  $graphics.FillRectangle($gradient, $bounds)
 
   $cyan = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(105, 231, 255))
-  $white = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(248, 246, 239))
-  $muted = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(174, 184, 198))
+  $white = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(249, 248, 243))
+  $muted = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(178, 190, 204))
   $gold = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(247, 188, 82))
-  $panel = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(19, 25, 36))
-  $line = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(65, 85, 105)), 2
-  $titleFont = New-Object System.Drawing.Font 'Arial', 53, ([System.Drawing.FontStyle]::Bold)
+  $ghost = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(18, 105, 231, 255))
+  $gridPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(13, 105, 231, 255)), 1
+  $linePen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(150, 105, 231, 255)), 3
+  $titleFont = New-Object System.Drawing.Font 'Arial', 54, ([System.Drawing.FontStyle]::Bold)
   $bodyFont = New-Object System.Drawing.Font 'Arial', 23, ([System.Drawing.FontStyle]::Regular)
-  $eyebrowFont = New-Object System.Drawing.Font 'Arial', 15, ([System.Drawing.FontStyle]::Bold)
+  $kickerFont = New-Object System.Drawing.Font 'Arial', 15, ([System.Drawing.FontStyle]::Bold)
+  $numberFont = New-Object System.Drawing.Font 'Arial', 176, ([System.Drawing.FontStyle]::Bold)
   $footerFont = New-Object System.Drawing.Font 'Arial', 14, ([System.Drawing.FontStyle]::Regular)
 
-  $graphics.FillEllipse($cyan, -100, -140, 390, 390)
-  $graphics.FillEllipse($gold, 1110, 570, 250, 250)
-  $graphics.FillRectangle($panel, 70, 66, 1140, 588)
-  $graphics.DrawRectangle($line, 70, 66, 1140, 588)
-  $graphics.DrawString($Eyebrow.ToUpperInvariant(), $eyebrowFont, $cyan, 116, 112)
-  $graphics.DrawString($Title, $titleFont, $white, (New-Object System.Drawing.RectangleF 108, 162, 1060, 165))
-  $graphics.DrawString($Body, $bodyFont, $muted, (New-Object System.Drawing.RectangleF 112, 350, 1048, 190))
-  $graphics.DrawString($Footer, $footerFont, $gold, 112, 598)
+  for ($x = 0; $x -le 1280; $x += 64) { $graphics.DrawLine($gridPen, $x, 0, $x, 720) }
+  for ($y = 0; $y -le 720; $y += 64) { $graphics.DrawLine($gridPen, 0, $y, 1280, $y) }
+  $graphics.FillPolygon($cyan, @(
+    (New-Object System.Drawing.Point 0, 0),
+    (New-Object System.Drawing.Point 255, 0),
+    (New-Object System.Drawing.Point 150, 720),
+    (New-Object System.Drawing.Point 0, 720)
+  ))
+  $graphics.FillRectangle((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(225, 7, 12, 20))), 44, 42, 1192, 636)
+  $graphics.DrawLine($linePen, 104, 126, 1176, 126)
+  if ($Number) { $graphics.DrawString($Number, $numberFont, $ghost, 930, 132) }
+  $graphics.DrawString('PETBATTLE', $kickerFont, $gold, 104, 78)
+  $graphics.DrawString($Kicker.ToUpperInvariant(), $kickerFont, $cyan, 104, 158)
+  $graphics.DrawString($Title, $titleFont, $white, (New-Object System.Drawing.RectangleF 96, 212, 1010, 170))
+  $graphics.DrawString($Body, $bodyFont, $muted, (New-Object System.Drawing.RectangleF 102, 420, 980, 120))
+  $graphics.DrawString($Footer, $footerFont, $gold, 102, 610)
 
   $bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
-  $titleFont.Dispose(); $bodyFont.Dispose(); $eyebrowFont.Dispose(); $footerFont.Dispose()
-  $cyan.Dispose(); $white.Dispose(); $muted.Dispose(); $gold.Dispose(); $panel.Dispose(); $line.Dispose()
+  $titleFont.Dispose(); $bodyFont.Dispose(); $kickerFont.Dispose(); $numberFont.Dispose(); $footerFont.Dispose()
+  $cyan.Dispose(); $white.Dispose(); $muted.Dispose(); $gold.Dispose(); $ghost.Dispose(); $gridPen.Dispose(); $linePen.Dispose(); $gradient.Dispose()
   $graphics.Dispose(); $bitmap.Dispose()
 }
 
-New-Slide -Path (Join-Path $workDir 'title.png') `
-  -Eyebrow 'OpenAI Build Week | Education' `
-  -Title 'PETBATTLE' `
-  -Body 'Turn any visual creation into a playable PET. Battle with meaning - not file size - and unlock new creative media by learning.'
-
-New-Slide -Path (Join-Path $workDir 'architecture.png') `
-  -Eyebrow 'Explainable AI architecture' `
-  -Title 'GPT-5.6 reads meaning. Rules decide power.' `
-  -Body 'Browser to optional Cloudflare Worker to GPT-5.6 Luna structured semantics to Zod validation to deterministic PET stats. API-free local analysis remains fully playable.'
-
-New-Slide -Path (Join-Path $workDir 'codex.png') `
-  -Eyebrow 'Built with Codex' `
-  -Title 'From unfinished concept to coherent product' `
-  -Body 'Codex helped implement the 3D arena, battle engine, Worker boundary, progression, SVG learning quest, tests, browser QA, localization, demo assets, and GitHub Pages deployment.'
-
-New-Slide -Path (Join-Path $workDir 'closing.png') `
-  -Eyebrow 'PETBATTLE' `
-  -Title 'Understand. Create. Return to the arena.' `
-  -Body 'Play now without an account or API key. Source code and judge instructions are public.' `
-  -Footer 'tatelog.github.io/petbattle | github.com/tatelog/petbattle'
-
-$narration = @'
-PETBATTLE turns any visual creation into a playable expression token, and turns progression into learning.
-
-Most generative systems reward producing more. PETBATTLE deliberately does not. File size, resolution, and raw token usage never become battle power. Instead, the artifact is interpreted into a limited set of meaningful essences. Deterministic rules then create explainable Physical, Magic, Defense, and health parameters.
-
-The complete core experience runs on GitHub Pages with no API key. I can summon an image through a magic circle, inspect only my own PET parameters, and start a CPU battle. The opponent stays sealed until battle begins.
-
-The camera descends from an aerial view into a Three dot J S colosseum. I choose Physical, Magic, or Defense. Physical interrupts Magic, Magic pierces Defense, and Defense counters Physical. Battle effects and fullscreen controls keep the commands inside the arena.
-
-One match cannot instantly maximize the PET. Battles award bounded experience and record action mastery. At Core Level Two, PETBATTLE unlocks a source-image-free S V G Evolution Quest. The learner chooses a theme and focus, then follows Observe, Decompose, Build, and Verify guidance. The resulting safe S V G and a written reflection become portfolio evidence, and can be summoned into the next battle.
-
-G P T Five point Six Luna is integrated through a Cloudflare Worker for structured semantic recognition. Luna proposes meaning. Validated deterministic code calculates the stats. The key never enters the browser, and a local analyzer keeps the experience reliable when the A P I is absent.
-
-Codex was my primary engineering partner. In one build thread, I used it to redesign the product, implement the 3D arena and battle engine, create the secure A I boundary, add progression and educational quests, write tests, perform browser quality assurance, add English and Japanese themes, and deploy the public app. I made the product decisions that keep the system fair, explainable, and educational.
-
-Today PETBATTLE teaches raster and vector thinking. Next, Core Levels can unlock code effects, 3D models, and structured formats such as P D F and I F C, each with its own validator, learning objective, and creative challenge.
-
-PETBATTLE. Understand what you made, learn a new way to express it, and bring it back to the arena.
-'@
-
-$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
-$voice = $synth.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Name -eq 'Microsoft Zira Desktop' } | Select-Object -First 1
-if ($voice) { $synth.SelectVoice($voice.VoiceInfo.Name) }
-$synth.Rate = 1
-$synth.Volume = 100
-$synth.SetOutputToWaveFile($voicePath)
-$synth.Speak($narration)
-$synth.Dispose()
-
-$segments = @(
-  @{ Image = (Join-Path $workDir 'title.png'); Duration = 8 },
-  @{ Image = (Join-Path $demoDir 'petbattle-demo-poster.jpg'); Duration = 15 },
-  @{ Video = (Join-Path $demoDir 'petbattle-demo.mp4') },
-  @{ Image = (Join-Path $demoDir 'petbattle-api-free-mode.jpg'); Duration = 15 },
-  @{ Image = (Join-Path $demoDir 'petbattle-battle-fullscreen.jpg'); Duration = 15 },
-  @{ Image = (Join-Path $demoDir 'petbattle-progression-result.jpg'); Duration = 15 },
-  @{ Image = (Join-Path $demoDir 'petbattle-evolution-studio.jpg'); Duration = 20 },
-  @{ Image = (Join-Path $workDir 'architecture.png'); Duration = 20 },
-  @{ Image = (Join-Path $workDir 'codex.png'); Duration = 15 },
-  @{ Image = (Join-Path $workDir 'closing.png'); Duration = 12 }
-)
-
-$segmentFiles = @()
-for ($index = 0; $index -lt $segments.Count; $index += 1) {
-  $segment = $segments[$index]
-  $segmentPath = Join-Path $workDir ('segment-{0:D2}.mp4' -f $index)
-  $segmentFiles += $segmentPath
-  $videoFilter = 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=0x070A10,setsar=1,fps=30'
-  if ($segment.Image) {
-    & ffmpeg -loglevel error -y -loop 1 -i $segment.Image -t $segment.Duration -vf $videoFilter -an -c:v libx264 -preset medium -pix_fmt yuv420p -r 30 $segmentPath
-  } else {
-    & ffmpeg -loglevel error -y -i $segment.Video -vf $videoFilter -an -c:v libx264 -preset medium -pix_fmt yuv420p -r 30 $segmentPath
-  }
-  if ($LASTEXITCODE -ne 0) { throw "ffmpeg failed while creating $segmentPath" }
+function Get-MediaDuration([string]$Path) {
+  return [double](& ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $Path)
 }
 
-$concatPath = Join-Path $workDir 'segments.txt'
-$concatLines = $segmentFiles | ForEach-Object { "file '$($_.Replace('\', '/'))'" }
-[System.IO.File]::WriteAllLines($concatPath, $concatLines, (New-Object System.Text.UTF8Encoding($false)))
-& ffmpeg -loglevel error -y -f concat -safe 0 -i $concatPath -c copy $visualPath
-if ($LASTEXITCODE -ne 0) { throw 'ffmpeg failed while concatenating visual segments' }
+function Format-SrtTime([double]$Seconds) {
+  $span = [TimeSpan]::FromSeconds($Seconds)
+  return '{0:00}:{1:00}:{2:00},{3:000}' -f [math]::Floor($span.TotalHours), $span.Minutes, $span.Seconds, $span.Milliseconds
+}
 
-& ffmpeg -loglevel error -y -i $visualPath -i $voicePath -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart $outputPath
-if ($LASTEXITCODE -ne 0) { throw 'ffmpeg failed while muxing narration' }
+function Split-CaptionText([string]$Text, [int]$Limit = 72) {
+  $groups = New-Object System.Collections.Generic.List[string]
+  $current = ''
+  foreach ($word in ($Text.Trim() -split '\s+')) {
+    if ($current.Length -gt 0 -and ($current.Length + 1 + $word.Length) -gt $Limit) {
+      $groups.Add($current)
+      $current = $word
+    } else {
+      $current = if ($current) { "$current $word" } else { $word }
+    }
+  }
+  if ($current) { $groups.Add($current) }
+  return $groups
+}
 
-$duration = & ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $outputPath
-Write-Host "Created $outputPath ($([math]::Round([double]$duration, 1)) seconds)"
+function Wrap-Caption([string]$Text, [int]$LineLength = 44) {
+  $words = $Text -split '\s+'
+  $lines = New-Object System.Collections.Generic.List[string]
+  $line = ''
+  foreach ($word in $words) {
+    if ($line.Length -gt 0 -and ($line.Length + 1 + $word.Length) -gt $LineLength) {
+      $lines.Add($line)
+      $line = $word
+    } else {
+      $line = if ($line) { "$line $word" } else { $word }
+    }
+  }
+  if ($line) { $lines.Add($line) }
+  return $lines -join [Environment]::NewLine
+}
+
+$titleSlide = Join-Path $workDir 'title-new.png'
+$trustSlide = Join-Path $workDir 'trust-new.png'
+$codexSlide = Join-Path $workDir 'codex-new.png'
+$closingSlide = Join-Path $workDir 'closing-new.png'
+
+New-CinematicSlide $titleSlide 'OpenAI Build Week | Education' 'Every creation can become a learner.' 'Turn an image into a playable PET. Battle with meaning. Unlock a new creative medium by learning.' ''
+New-CinematicSlide $trustSlide 'Explainable AI boundary' 'AI proposes meaning. Rules decide power.' 'Optional GPT-5.6 Luna semantics are validated by Zod, then deterministic code calculates PET stats. The local path stays fully playable.' '05'
+New-CinematicSlide $codexSlide 'Built with Codex' 'Design. Implement. Test. Deploy.' 'Codex accelerated the 3D arena, battle engine, secure Worker boundary, progression, localization, browser QA, media, and GitHub Pages delivery.' '06'
+New-CinematicSlide $closingSlide 'PETBATTLE' 'Understand. Create. Return to the arena.' 'Play the complete CPU experience without an account or API key.' '07' 'tatelog.github.io/petbattle | github.com/tatelog/petbattle'
+
+$dividerData = @(
+  @{ File = 'divider-01.png'; Kicker = '01 / Summon'; Title = 'Image to meaning to PET'; Body = 'Start from a clean session. Meet your creation before you meet the opponent.'; Number = '01' },
+  @{ File = 'divider-02.png'; Kicker = '02 / Battle'; Title = 'The rival stays sealed'; Body = 'Descend into the colosseum, reveal both PETs, then read the counter loop.'; Number = '02' },
+  @{ File = 'divider-03.png'; Kicker = '03 / Learn'; Title = 'Practice becomes progression'; Body = 'Bounded XP and action mastery make repeated decisions matter.'; Number = '03' },
+  @{ File = 'divider-04.png'; Kicker = '04 / Evolve'; Title = 'Unlock a medium by making with it'; Body = 'Observe, decompose, build, verify, reflect, and keep the evidence.'; Number = '04' },
+  @{ File = 'divider-05.png'; Kicker = '05 / Trust'; Title = 'Meaning is not authority'; Body = 'GPT-5.6 interprets. Validation and fixed rules decide the game.'; Number = '05' },
+  @{ File = 'divider-06.png'; Kicker = '06 / Codex'; Title = 'One build thread, full delivery loop'; Body = 'Product design through implementation, QA, media, and deployment.'; Number = '06' },
+  @{ File = 'divider-07.png'; Kicker = '07 / Impact'; Title = 'Creative literacy as a game loop'; Body = 'Raster and vector today. Code, 3D, PDF, and IFC as future learning quests.'; Number = '07' }
+)
+foreach ($divider in $dividerData) {
+  New-CinematicSlide (Join-Path $workDir $divider.File) $divider.Kicker $divider.Title $divider.Body $divider.Number
+}
+
+$chapters = @(
+  @{ Id = 'hook'; Section = ''; Divider = $null; Visual = $titleSlide; Kind = 'image'; Voice = 'What if every image could become a creature, and learning a new format made it stronger? This is PETBATTLE, an education game about understanding what you create.' },
+  @{ Id = 'summon'; Section = '01 / SUMMON'; Divider = (Join-Path $workDir 'divider-01.png'); Visual = (Join-Path $recordedDir 'summon.mp4'); Kind = 'video'; Voice = 'Starting from a clean Level One session, I switch to English and summon a visual creation through the magic circle. PETBATTLE turns visual meaning into a bounded set of essences, then shows only my own PET and its explainable Physical, Magic, Defense, and health parameters. File size, image resolution, and raw token usage never add battle power. The complete CPU loop works on GitHub Pages without an account or API key.' },
+  @{ Id = 'battle'; Section = '02 / BATTLE'; Divider = (Join-Path $workDir 'divider-02.png'); Visual = (Join-Path $recordedDir 'battle.mp4'); Kind = 'video'; Voice = 'The opponent stays sealed until I enter the colosseum. The camera spirals down from an aerial view, my PET arrives, and the rival is revealed only at battle start. Physical interrupts Magic. Magic pierces Defense. Defense counters Physical. The commands, health, effects, and result all stay inside one readable arena experience.'; CaptionTop = $true },
+  @{ Id = 'learn'; Section = '03 / LEARN'; Divider = (Join-Path $workDir 'divider-03.png'); Visual = (Join-Path $recordedDir 'progression.mp4'); Kind = 'video'; Voice = 'A result records bounded experience and mastery for the actions I actually used. One match cannot maximize the PET. In this same clean browser session, repeated real battles reached one hundred ninety experience and unlocked Core Level Two. The roadmap connects each future format to a concrete learning theme instead of making it a cosmetic upgrade.' },
+  @{ Id = 'evolve'; Section = '04 / EVOLVE'; Divider = (Join-Path $workDir 'divider-04.png'); Visual = (Join-Path $recordedDir 'evolution.mp4'); Kind = 'video'; Voice = 'Level Two opens a source-image-free SVG Evolution Quest. I choose a theme and a learning focus, then follow Observe, Decompose, Build, and Verify guidance. I explain why the model remains readable at thumbnail size, save the reflection as portfolio evidence, and evolve the PET. The unlock is not permission to upload a new extension. It is a guided reason to learn how that representation works.' },
+  @{ Id = 'trust'; Section = '05 / TRUST'; Divider = (Join-Path $workDir 'divider-05.png'); Visual = $trustSlide; Kind = 'image'; Voice = 'GPT-5.6 Luna is an optional semantic interpreter behind a Cloudflare Worker. It proposes a small structured description. Zod validates that response, and deterministic code calculates the stats. The OpenAI key never reaches the browser. When the model or Worker is absent, the local analyzer keeps the complete core game playable. AI helps read meaning, but it never becomes an opaque judge of student work.' },
+  @{ Id = 'codex'; Section = '06 / BUILT WITH CODEX'; Divider = (Join-Path $workDir 'divider-06.png'); Visual = $codexSlide; Kind = 'image'; Voice = 'Codex was my primary engineering partner in the main build thread. I used it to redesign the unfinished concept, implement the Three.js arena and deterministic battle engine, create the secure AI boundary, add progression and the SVG learning quest, write tests, perform browser quality assurance, localize the interface, generate the submission media, and deploy the public app. I made the product decisions that keep it fair, explainable, and educational.' },
+  @{ Id = 'close'; Section = '07 / IMPACT'; Divider = (Join-Path $workDir 'divider-07.png'); Visual = $closingSlide; Kind = 'image'; Voice = 'Today PETBATTLE teaches raster and vector thinking. Next, the same loop can unlock code effects, 3D models, PDF, and IFC, each with its own validator, learning objective, and creative challenge. Understand what you made. Learn a new way to express it. Return to the arena.' }
+)
+
+foreach ($chapter in $chapters) {
+  if ($chapter.Kind -eq 'video' -and -not (Test-Path $chapter.Visual)) {
+    throw "Missing clean recording: $($chapter.Visual). Run node scripts/record-demo-clips.mjs first."
+  }
+}
+
+$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
+try {
+  $synth.SelectVoice('Microsoft Zira Desktop')
+} catch {
+  $synth.SelectVoiceByHints(
+    [System.Speech.Synthesis.VoiceGender]::Female,
+    [System.Speech.Synthesis.VoiceAge]::Adult,
+    0,
+    [System.Globalization.CultureInfo]::GetCultureInfo('en-US')
+  )
+}
+$synth.Rate = 2
+$synth.Volume = 100
+
+$audioParts = New-Object System.Collections.Generic.List[string]
+$visualParts = New-Object System.Collections.Generic.List[string]
+$captionLines = New-Object System.Collections.Generic.List[string]
+$timeline = 0.0
+$captionIndex = 1
+
+$silencePath = Join-Path $workDir 'divider-silence.wav'
+& ffmpeg -loglevel error -y -f lavfi -i 'anullsrc=r=22050:cl=mono' -t $dividerSeconds -c:a pcm_s16le $silencePath
+if ($LASTEXITCODE -ne 0) { throw 'Failed to create divider silence' }
+
+for ($index = 0; $index -lt $chapters.Count; $index += 1) {
+  $chapter = $chapters[$index]
+  if ($chapter.Divider) {
+    $audioParts.Add($silencePath)
+    $dividerVideo = Join-Path $workDir ('visual-{0:D2}-divider.mp4' -f $index)
+    $fadeStart = [string]::Format([Globalization.CultureInfo]::InvariantCulture, '{0:0.00}', $dividerSeconds - 0.25)
+    $dividerFilter = "scale=1280:720,setsar=1,fps=30,fade=t=in:st=0:d=0.25,fade=t=out:st=${fadeStart}:d=0.25"
+    & ffmpeg -loglevel error -y -loop 1 -i $chapter.Divider -t $dividerSeconds -vf $dividerFilter -an -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -r 30 $dividerVideo
+    if ($LASTEXITCODE -ne 0) { throw "Failed to render divider $($chapter.Id)" }
+    $visualParts.Add($dividerVideo)
+    $timeline += $dividerSeconds
+  }
+
+  $speechPath = Join-Path $workDir ('speech-{0:D2}-{1}.wav' -f $index, $chapter.Id)
+  $synth.SetOutputToWaveFile($speechPath)
+  $synth.Speak($chapter.Voice)
+  $synth.SetOutputToNull()
+  $speechDuration = Get-MediaDuration $speechPath
+  $audioParts.Add($speechPath)
+
+  $visualVideo = Join-Path $workDir ('visual-{0:D2}-{1}.mp4' -f $index, $chapter.Id)
+  $fadeStart = [string]::Format([Globalization.CultureInfo]::InvariantCulture, '{0:0.00}', [math]::Max(0.1, $speechDuration - 0.35))
+  $labelFilter = if ($chapter.Section) { ",drawtext=font='Arial':text='$($chapter.Section)':fontcolor=0x69E7FF:fontsize=18:box=1:boxcolor=0x07101CCC:boxborderw=10:x=(w-tw)/2:y=18" } else { '' }
+  if ($chapter.Kind -eq 'video') {
+    $filter = "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=0x050910,tpad=stop_mode=clone:stop_duration=60,setsar=1,fps=30,fade=t=in:st=0:d=0.35,fade=t=out:st=${fadeStart}:d=0.35$labelFilter"
+    & ffmpeg -loglevel error -y -i $chapter.Visual -t $speechDuration -vf $filter -an -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -r 30 $visualVideo
+  } else {
+    $frameCount = [math]::Ceiling($speechDuration * 30)
+    $filter = "scale=1344:756,zoompan=z='min(zoom+0.00012,1.025)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frameCount}:s=1280x720:fps=30,setsar=1,fade=t=in:st=0:d=0.35,fade=t=out:st=${fadeStart}:d=0.35$labelFilter"
+    & ffmpeg -loglevel error -y -loop 1 -i $chapter.Visual -t $speechDuration -vf $filter -an -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -r 30 $visualVideo
+  }
+  if ($LASTEXITCODE -ne 0) { throw "Failed to render visual chapter $($chapter.Id)" }
+  $visualParts.Add($visualVideo)
+
+  $captionGroups = Split-CaptionText $chapter.Voice
+  $captionDuration = $speechDuration / $captionGroups.Count
+  for ($groupIndex = 0; $groupIndex -lt $captionGroups.Count; $groupIndex += 1) {
+    $start = $timeline + ($groupIndex * $captionDuration)
+    $end = [math]::Min($timeline + $speechDuration, $start + $captionDuration - 0.08)
+    $alignment = if ($chapter.CaptionTop) { '{\an8}' } else { '{\an2}' }
+    $captionLines.Add([string]$captionIndex)
+    $captionLines.Add("$(Format-SrtTime $start) --> $(Format-SrtTime $end)")
+    $captionLines.Add($alignment + (Wrap-Caption $captionGroups[$groupIndex]))
+    $captionLines.Add('')
+    $captionIndex += 1
+  }
+  $timeline += $speechDuration
+}
+$synth.Dispose()
+
+if ($captionLines.Count -gt 0 -and $captionLines[$captionLines.Count - 1] -eq '') {
+  $captionLines.RemoveAt($captionLines.Count - 1)
+}
+[System.IO.File]::WriteAllLines($captionPath, $captionLines, (New-Object System.Text.UTF8Encoding($false)))
+
+$audioListPath = Join-Path $workDir 'audio-parts.txt'
+$audioList = $audioParts | ForEach-Object { "file '$($_.Replace('\', '/'))'" }
+[System.IO.File]::WriteAllLines($audioListPath, $audioList, (New-Object System.Text.UTF8Encoding($false)))
+& ffmpeg -loglevel error -y -f concat -safe 0 -i $audioListPath -c copy $narrationPath
+if ($LASTEXITCODE -ne 0) { throw 'Failed to concatenate new narration' }
+
+$visualListPath = Join-Path $workDir 'visual-parts.txt'
+$visualList = $visualParts | ForEach-Object { "file '$($_.Replace('\', '/'))'" }
+[System.IO.File]::WriteAllLines($visualListPath, $visualList, (New-Object System.Text.UTF8Encoding($false)))
+& ffmpeg -loglevel error -y -f concat -safe 0 -i $visualListPath -c copy $visualPath
+if ($LASTEXITCODE -ne 0) { throw 'Failed to concatenate new visual chapters' }
+
+Push-Location $Root
+try {
+  $captionFilter = "subtitles='public/demo/petbattle-submission-en.srt':force_style='FontName=Arial,FontSize=21,PrimaryColour=&H00FFFFFF,OutlineColour=&H00101820,BackColour=&HA0000000,BorderStyle=3,Outline=1,Shadow=0,MarginV=38'"
+  & ffmpeg -loglevel error -y -i $visualPath -i $narrationPath -vf $captionFilter -filter_complex '[1:a]loudnorm=I=-16:TP=-1.5:LRA=7[a]' -map 0:v -map '[a]' -c:v libx264 -preset medium -crf 19 -pix_fmt yuv420p -c:a aac -b:a 192k -shortest -movflags +faststart $outputPath
+  if ($LASTEXITCODE -ne 0) { throw 'Failed to burn new captions and mux the new narration' }
+} finally {
+  Pop-Location
+}
+
+$duration = Get-MediaDuration $outputPath
+if ($duration -ge 180) { throw "Submission video is too long: $duration seconds" }
+Write-Host "Created fully rebuilt demo: $outputPath ($([math]::Round($duration, 1)) seconds)"
