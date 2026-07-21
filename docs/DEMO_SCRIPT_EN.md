@@ -1,6 +1,6 @@
 # PETBATTLE — English demo narration
 
-Target length: about 100 seconds. The final submission must remain under three minutes.
+Generated length: about 143 seconds. The final submission must remain under three minutes.
 
 ## Voiceover
 
@@ -27,12 +27,12 @@ PETBATTLE: understand what you made, learn a new way to express it, and bring it
 | Time | Visual |
 |---:|---|
 | 0:00–0:08 | Title and Education track |
-| 0:08–0:18 | Summoning Lab poster / problem statement |
-| 0:18–0:35 | Existing live summon-to-battle recording |
-| 0:35–0:47 | API-free local mode |
-| 0:47–0:59 | Fullscreen arena battle |
-| 0:59–1:11 | Multi-match XP and mastery |
-| 1:11–1:25 | SVG Evolution Quest |
-| 1:25–1:40 | GPT-5.6 and deterministic architecture |
-| 1:40–1:54 | Codex contribution |
-| 1:54–2:03 | Public URL, repository, and closing line |
+| 0:08–0:23 | Summoning Lab poster / problem statement |
+| 0:23–0:39 | Existing live summon-to-battle recording |
+| 0:39–0:54 | API-free local mode |
+| 0:54–1:09 | Fullscreen arena battle |
+| 1:09–1:24 | Multi-match XP and mastery |
+| 1:24–1:44 | SVG Evolution Quest |
+| 1:44–2:04 | GPT-5.6 and deterministic architecture |
+| 2:04–2:19 | Codex contribution |
+| 2:19–2:23 | Public URL, repository, and closing line |
